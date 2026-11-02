@@ -38,6 +38,11 @@ from desk import fields as F
 
 log = logging.getLogger("auditor")
 
+
+def pctr(v: float, limit: float) -> str:
+    """Percent for a reject reason: 1 decimal near the limit, so "5.3%" never reads as the "5%" limit."""
+    return f"{v:.1f}%" if abs(v - limit) < 1 else f"{v:.0f}%"
+
 SOL_LAYERS = ["Mint authority", "Freeze authority", "Dev wallet", "Top 10 holders", "LP locked",
               "Pool age", "Bundled wallets", "Delegations"]
 RH_LAYERS = ["Safety Score", "Rings", "Known operator", "Dev wallet", "Top 10 holders",
@@ -267,7 +272,7 @@ async def sol_dev(c: Ctx):
     mx = float(config.get("auditor.max_dev_pct"))
     at_mig = c.coin.get("creator_balance_at_migration")
     if pct >= mx:
-        return (False, f"dev holds {pct:.1f}%", src, f"dev holds {pct:.0f}%")
+        return (False, f"dev holds {pct:.1f}%", src, f"dev holds {pctr(pct, mx)}")
     if at_mig is not None and float(bal) < float(at_mig):
         sold = 100.0 * (float(at_mig) - float(bal)) / supply
         return (False, f"dev sold {sold:.2f}% of supply since migration", src, "dev sold since migration")
@@ -282,7 +287,7 @@ async def sol_top10(c: Ctx):
         raise NoData("top10")
     mx = float(config.get("auditor.max_top10_pct"))
     v = f"top 10 hold {pct:.1f}% (pools and curve excluded)"
-    return (pct < mx, v, "rpc", f"top 10 hold {pct:.0f}%")
+    return (pct < mx, v, "rpc", f"top 10 hold {pctr(pct, mx)}")
 
 
 async def sol_lp(c: Ctx):
@@ -296,7 +301,7 @@ async def sol_lp(c: Ctx):
         raise NoData("lpLockedPct")
     mn = float(config.get("auditor.min_lp_locked_pct"))
     if locked < mn:
-        return (False, f"LP locked {locked:.1f}%", "rugcheck", f"LP locked {locked:.0f}%")
+        return (False, f"LP locked {locked:.1f}%", "rugcheck", f"LP locked only {pctr(locked, mn)}")
     now_liq = F.dex_liquidity(pair)
     base = c.scan.get("liquidityUsd") or c.coin.get("liq_at_scan")
     if now_liq is None:
@@ -412,7 +417,7 @@ async def rh_dev(c: Ctx):
     mx = float(config.get("auditor.max_dev_pct"))
     if F.gh_dev_sold(t) is not None:
         return (False, f"dev sold {sold if sold is not None else 'n/a'}% of its buy", "grokhood", "dev sold")
-    return (share < mx, f"deployer holds {share:.1f}%, not sold", "grokhood", f"dev holds {share:.0f}%")
+    return (share < mx, f"deployer holds {share:.1f}%, not sold", "grokhood", f"dev holds {pctr(share, mx)}")
 
 
 async def rh_top10(c: Ctx):
@@ -427,7 +432,7 @@ async def rh_top10(c: Ctx):
     pct = sum(shares)
     c.out["holders"] = F.ghh_total(h)
     mx = float(config.get("auditor.max_top10_pct"))
-    return (pct < mx, f"top 10 hold {pct:.1f}%", "grokhood", f"top 10 hold {pct:.0f}%")
+    return (pct < mx, f"top 10 hold {pct:.1f}%", "grokhood", f"top 10 hold {pctr(pct, mx)}")
 
 
 async def rh_exempt(c: Ctx):
