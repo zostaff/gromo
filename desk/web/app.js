@@ -10,7 +10,8 @@
   const qs = new URLSearchParams(location.search);
   const DEMO = qs.get('demo') === '1';
   const DEMO_STATE = DEMO ? qs.get('state') : null; // loading | empty | error (design only)
-  const STORY = DEMO && qs.get('story') === '1'; // demo video: one scripted PAPER night from a $120 stack
+  const STORY_LIVE = DEMO && qs.get('story') === 'live'; // the same night, played live from $120 by the recorder
+  const STORY = DEMO && (qs.get('story') === '1' || STORY_LIVE); // demo video: one scripted PAPER night from a $120 stack
   const SHOW = DEMO && (qs.get('show') === '1' || STORY); // demo video: the recorder drives a fast scripted session through window.__show
   const TOKEN_KEY = 'desk.token';
   (function takeToken() {
@@ -1438,11 +1439,16 @@
         }
       }
       acts.reverse();
+      if (STORY_LIVE) { // start of the night: $120, empty feed; the recorder plays the rest through window.__show
+        const L0 = new Date(2026, 10, 2, 23, 45).getTime();
+        series.length = 0; marks.length = 0; acts.length = 0;
+        for (let i = 30; i >= 0; i--) series.push([L0 - i * 60000, 120]);
+      }
     }
     const hc = bySym.HCAT; const hpos = open.HCAT;
     const st = {
-      balance: series[series.length - 1][1], nightStart: NIGHT, start: START_ALL, mode: 'PAPER', unread: 2, handle: 'zostaff',
-      counts: STORY ? { scanner: 53, auditor: 53, analyst: 12, executor: 12, risk: 12 } : { scanner: 1284, auditor: 312, analyst: 57, executor: 6, risk: 5 },
+      balance: STORY_LIVE ? 120 : series[series.length - 1][1], nightStart: NIGHT, start: START_ALL, mode: 'PAPER', unread: 2, handle: 'zostaff',
+      counts: STORY_LIVE ? { scanner: 0, auditor: 0, analyst: 0, executor: 0, risk: 0 } : STORY ? { scanner: 53, auditor: 53, analyst: 12, executor: 12, risk: 12 } : { scanner: 1284, auditor: 312, analyst: 57, executor: 6, risk: 5 },
     };
     function stateObj() {
       const bal = st.balance;
@@ -1588,7 +1594,7 @@
       if (!SHOW) setInterval(() => { st.balance = +(st.balance + (rnd() - 0.42) * 0.9).toFixed(2); series.push([Date.now(), st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: Date.now() }); }, 2600);
       // scanner feed
       const keys = Object.keys(coins); let si = 3;
-      if (!STORY) setInterval(() => { const c = coins[keys[si++ % keys.length]]; const pass = rnd() < 0.3; st.counts.scanner++; feed.unshift({ name: c.name, symbol: c.symbol, mint: c.mint, chain: c.chain, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liq: c.liquidity }); feed = feed.slice(0, 6); emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liquidityUsd: c.liquidity }); }, SHOW ? 700 : 3200);
+      if (!STORY || STORY_LIVE) setInterval(() => { const c = coins[keys[si++ % keys.length]]; const pass = rnd() < 0.3; st.counts.scanner++; feed.unshift({ name: c.name, symbol: c.symbol, mint: c.mint, chain: c.chain, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liq: c.liquidity }); feed = feed.slice(0, 6); emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liquidityUsd: c.liquidity }); }, STORY_LIVE ? 900 : SHOW ? 700 : 3200);
       // auditor: finish NEWT live, then loop on new coins
       let ai = 0;
       const runAudit = (c, from) => {
@@ -1621,24 +1627,25 @@
       return { mint: c.mint, chain: c.chain, name: c.name, symbol: c.symbol, image: null, ageH: c.ageH, price: c.price, sinceEntryPct: closed ? null : sp.pct, shield: NL + '/' + NL, marketCap: c.marketCap * (1 + sp.pct / 100), liquidity: c.liquidity, volume24h: c.volume24h, holders: c.holders, candles, position: closed ? null : position, exitLine: closed ? null : trailOn ? trail : sp.entry * 0.94, coinUrl: fomoUrl(c), grokhoodUrl: null, safetyScore: c.safetyScore || null };
     }
     function showApi(emit, runAudit) {
+      const nowMs = () => (window.__simNow ? window.__simNow() : Date.now()); const nowISO = () => new Date(nowMs()).toISOString();
       const unreal = () => Object.values(showPos).reduce((t, p) => t + p.size * p.pct / 100, 0);
       let simT = null; // session clock: each tick is ~80s of night, so the chart draws a slope, not a wall
-      const pushBal = () => { st.balance = +(showCash + unreal()).toFixed(2); simT = (simT || series[series.length - 1][0]) + 80000; series.push([simT, st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: simT }); };
-      const act = (row) => { const r = Object.assign({ id: id++, ts: new Date().toISOString(), image: null }, row); acts.unshift(r); emit('activity', r); };
+      const pushBal = () => { st.balance = +(showCash + unreal()).toFixed(2); simT = window.__simNow ? Math.max(window.__simNow(), (simT || 0) + 1000) : (simT || series[series.length - 1][0]) + 80000; series.push([simT, st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: simT }); };
+      const act = (row) => { const r = Object.assign({ id: id++, ts: nowISO(), image: null }, row); acts.unshift(r); emit('activity', r); };
       return {
         scan: (sym, pass, reason) => { const c = bySym[sym]; emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: reason || null, liquidityUsd: c.liquidity }); },
         audit: (sym) => runAudit(bySym[sym], 1),
         verdict: (sym, score) => { const c = bySym[sym]; scoring = { mint: c.mint, name: c.name, score, passed: score >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score, passed: score >= 70 }); },
         mint: (sym) => bySym[sym].mint,
-        buy: (sym) => {
+        buy: (sym, forceSize, silent) => {
           if (showCash == null) showCash = st.balance;
           const c = bySym[sym]; const base = showBase[c.mint] = showBase[c.mint] || candlesFor(c, 0, null);
           const entry = base.candles[base.candles.length - 1][4];
-          const size = +(st.balance * stackPct / 100).toFixed(2);
+          const size = forceSize || +(st.balance * stackPct / 100).toFixed(2);
           showPos[sym] = { size, entry, pct: 0, peak: 0, candles: [], t0: Date.now() };
           st.counts.executor++; exec = { lastSize: size, state: 'filled', progress: 100, name: sym };
-          marks.push({ ts: new Date().toISOString(), kind: 'buy', label: 'Bought ' + sym, mint: c.mint });
-          act({ kind: 'bought', title: 'Bought ' + sym, subtitle: 'Executor', value: usd(size), value2: stackPct + '% of stack', mint: c.mint, chain: c.chain });
+          if (!silent) marks.push({ ts: nowISO(), kind: 'buy', label: 'Bought ' + sym, mint: c.mint });
+          if (!silent) act({ kind: 'bought', title: 'Bought ' + sym, subtitle: 'Executor', value: usd(size), value2: stackPct + '% of stack', mint: c.mint, chain: c.chain });
           emit('fill', { mint: c.mint, name: sym, state: 'filled', progress: 100, sizeUsd: size });
           return size;
         },
@@ -1646,15 +1653,16 @@
           const sp = showPos[sym]; if (!sp) return; const c = bySym[sym];
           const prev = sp.candles.length ? sp.candles[sp.candles.length - 1][4] : sp.entry;
           const cl = sp.entry * (1 + pct / 100); const o = prev;
-          sp.candles.push([Date.now(), o, Math.max(o, cl) * (1 + rnd() * 0.012), Math.min(o, cl) * (1 - rnd() * 0.012), cl, Math.floor(20000 + rnd() * 60000)]);
+          sp.candles.push([nowMs(), o, Math.max(o, cl) * (1 + rnd() * 0.012), Math.min(o, cl) * (1 - rnd() * 0.012), cl, Math.floor(20000 + rnd() * 60000)]);
           sp.pct = pct; sp.peak = Math.max(sp.peak, pct);
           emit('price', { mint: c.mint, price: cl }); pushBal();
         },
+        reject: (sym, why) => { const c = bySym[sym]; st.counts.auditor++; act({ kind: 'rejected', title: 'Rejected ' + sym, subtitle: why, value: 'Skipped', value2: '', mint: c.mint, chain: c.chain }); },
         sell: (sym, how) => {
           const sp = showPos[sym]; if (!sp) return; const c = bySym[sym];
           const pnl = +(sp.size * sp.pct / 100).toFixed(2); showCash += pnl; showClosed[sym] = sp; delete showPos[sym];
           st.counts.risk = (st.counts.risk || 0) + 1;
-          marks.push({ ts: new Date().toISOString(), kind: pnl >= 0 ? 'win' : 'loss', label: usd(pnl, { sign: true }), mint: c.mint });
+          if (Math.abs(pnl) > 100 || sym === 'PUG') marks.push({ ts: nowISO(), kind: pnl >= 0 ? 'win' : 'loss', label: usd(pnl, { sign: true }), mint: c.mint });
           act({ kind: pnl >= 0 ? 'sold' : 'stopped', title: (pnl >= 0 ? 'Sold ' : 'Stopped ') + sym, subtitle: how || (pnl >= 0 ? 'Risk · trailing stop' : 'Risk · -6% stop'), value: usd(pnl, { sign: true }), value2: pct(sp.pct, 1), mint: c.mint, chain: c.chain });
           pushBal(); emit('exit', { mint: c.mint, name: sym, pnlUsd: pnl });
           return { pnl, pct: sp.pct, size: sp.size };
