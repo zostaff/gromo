@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Desk">
+<meta name="theme-color" content="#000000">
+<meta name="format-detection" content="telephone=no">
+<title>GROKHOOD Desk</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <div id="pages"></div>
+  <nav id="tabbar" aria-label="Tabs">
+    <a href="#/home" data-tab="home" aria-label="Home">
+      <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4.5 13.2 14 5l9.5 8.2V23a1.5 1.5 0 0 1-1.5 1.5h-5v-6.5h-6v6.5H6A1.5 1.5 0 0 1 4.5 23z"/></svg>
+      <span>Home</span>
+    </a>
+    <a href="#/agents" data-tab="agents" aria-label="Agents">
+      <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="8" cy="9" r="3.2"/><circle cx="20" cy="9" r="3.2"/><circle cx="14" cy="19" r="3.2"/><path d="M10.6 10.6 12.6 16M17.4 10.6 15.4 16M11.2 9h5.6" fill="none"/></svg>
+      <span>Agents</span>
+    </a>
+    <a href="#/activity" data-tab="activity" aria-label="Activity">
+      <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M3.5 15h4.6l3-8.5 5.8 15 3-6.5h4.6" fill="none"/></svg>
+      <span>Activity</span>
+    </a>
+    <a href="#/account" data-tab="account" aria-label="Account">
+      <svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="10" r="4.6"/><path d="M5 24c.9-4.6 4.6-7.2 9-7.2s8.1 2.6 9 7.2"/></svg>
+      <span>Account</span>
+    </a>
+  </nav>
+</div>
+<div id="sheet-root"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="chart.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
