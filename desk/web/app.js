@@ -58,6 +58,7 @@
     return Math.round(h / 24) + 'd old';
   }
   const CHAIN = { solana: 'Solana', robinhood: 'Robinhood Chain' };
+  const fullShield = (s) => { const m = /^(\d+)\/(\d+)/.exec(String(s || '')); return !!m && m[1] === m[2]; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   function toast(text) {
     const t = $('#toast'); t.textContent = text; t.classList.add('on');
@@ -363,7 +364,7 @@
       let line;
       if (!cur) line = '<span class="muted">No coin taken apart yet</span>';
       else if (reading && firstOpen) line = `<span style="color:var(--cyan)">taking apart ${esc(cur.name)}...</span>`;
-      else if (c.last && /^8\/8/.test(c.last)) line = `<span class="up">${esc(c.last)}</span>`;
+      else if (c.last && fullShield(c.last)) line = `<span class="up">${esc(c.last)}</span>`;
       else if (c.last) line = `<span class="down">${esc(c.last)}</span>`;
       else line = '';
       body.innerHTML = `<div class="abig" style="color:#4da3ff">${intf(c.takenApart)}<small>taken apart</small></div>
@@ -889,7 +890,7 @@
       navShare(root, 'trade', { mint });
       const pos = c.position;
       const sh = c.shield;
-      const shCls = !sh ? 'na' : /^8\/8/.test(sh) ? 'ok' : 'bad';
+      const shCls = !sh ? 'na' : fullShield(sh) ? 'ok' : 'bad';
       const age = ageText(c.ageH);
       const sep = num(c.sinceEntryPct);
       const meta = [esc(c.symbol), esc(CHAIN[c.chain] || c.chain), age].filter(Boolean).join(' · ');
@@ -961,9 +962,10 @@
     const L = {}; // n -> layer
     let meta = null;
 
-    const DX = 150, R = 104, RY = 17, TH = 9, GAP = 37, Y0 = 26;
+    const DX = 150, R = 104, RY = 17, TH = 9, Y0 = 26;
+    const gap = () => Math.min(37, 259 / Math.max(1, NL - 1)); // 8 or 9 discs fit the same stack
     function disc(n) {
-      const cy = Y0 + (n - 1) * GAP;
+      const cy = Y0 + (n - 1) * gap();
       return `<g data-disc="${n}">
         <path d="M${DX - R} ${cy} v${TH} a${R} ${RY} 0 0 0 ${2 * R} 0 v-${TH} z" fill="#232325" data-side/>
         <ellipse cx="${DX}" cy="${cy}" rx="${R}" ry="${RY}" fill="url(#face)" stroke="#3a3a3c" stroke-width="1" data-face/>
@@ -980,7 +982,7 @@
         <div class="verdict" data-v></div>
         <div class="stackbox"><svg viewBox="0 0 300 310" aria-hidden="true">
           <defs><linearGradient id="face" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3a3c"/><stop offset="1" stop-color="#2a2a2c"/></linearGradient></defs>
-          ${[8, 7, 6, 5, 4, 3, 2, 1].map(disc).join('')}
+          ${Array.from({ length: NL }, (_, i) => NL - i).map(disc).join('')}
           <g data-beam opacity="0">
             <rect x="18" y="${Y0 - 21}" width="264" height="42" rx="10" fill="rgba(100,210,255,0.12)"/>
             <rect x="18" y="${Y0 + 4}" width="264" height="2" rx="1" fill="#64d2ff"/>
@@ -1025,7 +1027,7 @@
     const beam = { y: 0, op: 0, raf: 0 };
     function setBeam(n, show) {
       const b = $('[data-beam]', box); if (!b) return;
-      const y1 = (n - 1) * GAP, o1 = show ? 1 : 0;
+      const y1 = (n - 1) * gap(), o1 = show ? 1 : 0;
       const y0 = beam.y, o0 = beam.op, t0 = performance.now();
       cancelAnimationFrame(beam.raf);
       const tick = () => {
@@ -1050,7 +1052,7 @@
     function paintRow(n) { const r = $(`[data-row="${n}"]`, box); if (r) r.outerHTML = layerRow(n); }
     function step() {
       if (done || busy) return;
-      if (cursor > 8) { finish(); return; }
+      if (cursor > NL) { finish(); return; }
       if (!L[cursor]) { setBeam(cursor, true); paintRow(cursor); return; } // beam waits for data
       busy = true; setBeam(cursor, true); paintRow(cursor); paintVerdict();
       later(() => {
@@ -1464,7 +1466,7 @@
       const { candles, entry } = candlesFor(c, 0, pp);
       c.price = candles[candles.length - 1][4];
       const a = auditFor(c);
-      const shield = `${a.layers.filter((l) => l.pass === true).length}/8`;
+      const shield = `${a.layers.filter((l) => l.pass === true).length}/${a.layers.length}`;
       let position = null, exitLine = null;
       if (isOpen) {
         const peak = Math.max(...candles.slice(-80).map((x) => x[2]));
