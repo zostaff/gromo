@@ -12,7 +12,9 @@
   const DEMO_STATE = DEMO ? qs.get('state') : null; // loading | empty | error (design only)
   const STORY_LIVE = DEMO && qs.get('story') === 'live'; // the same night, played live from $120 by the recorder
   const STORY = DEMO && (qs.get('story') === '1' || STORY_LIVE); // demo video: one scripted PAPER night from a $120 stack
-  const SHOW = DEMO && (qs.get('show') === '1' || STORY); // demo video: the recorder drives a fast scripted session through window.__show
+  const SHOW = DEMO && (qs.get('show') === '1' || STORY);
+  const STORY_STACK = STORY_LIVE && +qs.get('stack') > 0 ? +qs.get('stack') : 120; // live story: starting stack (default $120)
+  const STORY_T0 = STORY_LIVE && /^\d{1,2}:\d{2}$/.test(qs.get('t0') || '') ? qs.get('t0').split(':').map(Number) : [23, 45]; // live story: night start, local time // demo video: the recorder drives a fast scripted session through window.__show
   const TOKEN_KEY = 'desk.token';
   (function takeToken() {
     const m = location.hash.match(/(?:^#|&)t=([^&]+)/);
@@ -1365,8 +1367,8 @@
     bySym.GOOSE.holders = null;
     const NOW = Date.now();
     const T0 = NOW - 330 * 60000;
-    const START_ALL = STORY ? 120 : 1000;
-    const NIGHT = STORY ? 120 : 1113.2;
+    const START_ALL = STORY ? STORY_STACK : 1000;
+    const NIGHT = STORY ? STORY_STACK : 1113.2;
     const stackPct = 8;
     // scripted night
     const plan = [
@@ -1440,14 +1442,14 @@
       }
       acts.reverse();
       if (STORY_LIVE) { // start of the night: $120, empty feed; the recorder plays the rest through window.__show
-        const L0 = new Date(2026, 10, 2, 23, 45).getTime();
+        const L0 = new Date(2026, 10, 2, STORY_T0[0], STORY_T0[1]).getTime();
         series.length = 0; marks.length = 0; acts.length = 0;
-        for (let i = 30; i >= 0; i--) series.push([L0 - i * 60000, 120]);
+        for (let i = 30; i >= 0; i--) series.push([L0 - i * 60000, STORY_STACK]);
       }
     }
     const hc = bySym.HCAT; const hpos = open.HCAT;
     const st = {
-      balance: STORY_LIVE ? 120 : series[series.length - 1][1], nightStart: NIGHT, start: START_ALL, mode: 'PAPER', unread: 2, handle: 'zostaff',
+      balance: STORY_LIVE ? STORY_STACK : series[series.length - 1][1], nightStart: NIGHT, start: START_ALL, mode: 'PAPER', unread: 2, handle: 'zostaff',
       counts: STORY_LIVE ? { scanner: 0, auditor: 0, analyst: 0, executor: 0, risk: 0 } : STORY ? { scanner: 53, auditor: 53, analyst: 12, executor: 12, risk: 12 } : { scanner: 1284, auditor: 312, analyst: 57, executor: 6, risk: 5 },
     };
     function stateObj() {
@@ -1482,6 +1484,8 @@
       if (c.symbol === 'DUCK') { base[2].pass = false; base[2].value = '31%'; reason = 'dev holds 31%'; }
       if (c.symbol === 'GLAPE') { base[3].pass = false; base[3].value = '44%'; reason = 'top 10 hold 44%'; }
       if (c.symbol === 'RONIN') { base[0].pass = false; base[0].value = '41/100'; reason = 'Safety Score 41'; }
+      // demo video: the recorder can set layer values per coin, [[layer index, value, pass, reason]]
+      for (const [li, v, ok, why] of ((SHOW && window.__auditOv) || {})[c.symbol] || []) { base[li].value = v; base[li].pass = ok; if (!ok) reason = why; }
       // like the real Auditor: it stops at the first failed part, the rest stay "not checked"
       const fi = base.findIndex((l) => l.pass === false);
       if (fi >= 0) for (let i = fi + 1; i < base.length; i++) { base[i].pass = null; base[i].value = 'not checked'; }
@@ -1637,6 +1641,7 @@
         audit: (sym) => runAudit(bySym[sym], 1),
         verdict: (sym, score) => { const c = bySym[sym]; scoring = { mint: c.mint, name: c.name, score, passed: score >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score, passed: score >= 70 }); },
         mint: (sym) => bySym[sym].mint,
+        coin: (sym, o) => Object.assign(bySym[sym], o), // demo video: set a coin's stats for the story
         buy: (sym, forceSize, silent) => {
           if (showCash == null) showCash = st.balance;
           const c = bySym[sym]; const base = showBase[c.mint] = showBase[c.mint] || candlesFor(c, 0, null);
