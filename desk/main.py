@@ -101,7 +101,7 @@ class Redact(logging.Filter):
 
 class PerAgentFiles(logging.Handler):
     """logs/<agent>.log by logger name (last dotted part if an agent/known module), else desk.log."""
-    KNOWN = set(AGENTS) | {"api", "telegram", "notify", "report", "health", "copybot"}
+    KNOWN = set(AGENTS) | {"api", "telegram", "notify", "report", "health", "copybot", "replay"}
 
     def __init__(self) -> None:
         super().__init__()
@@ -233,6 +233,9 @@ async def serve() -> None:
     sup.spawn("report", report.report_loop)
     sup.spawn("health", lambda: report.health_loop(sup))
     sup.spawn("prices", api.price_loop)
+    from . import replay
+    replay.ensure_schema()
+    sup.spawn("replay", replay.loop)
     try:
         risk_mod = importlib.import_module("desk.agents.risk")
         if hasattr(risk_mod, "balance_loop"):

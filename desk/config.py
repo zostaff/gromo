@@ -80,6 +80,8 @@ S: dict[str, Spec] = {
     "risk.timeout_h": Spec(3, 0.25, 168, label="Timeout h"),
     "risk.timeout_min_gain_pct": Spec(5, 0, 1000, label="Timeout min gain %"),
     "risk.confirm_window_min": Spec(2, 1, 60, label="Confirm window min"),
+    # replay
+    "replay.horizon_h": Spec(6, 1, 48, label="Replay: hours after the decision"),
     # desk
     "desk.mode": Spec("PAPER", choices=("PAPER", "LIVE"), label="Mode"),
     "desk.paper_start_stack": Spec(200, 10, 10_000_000, label="Paper start stack $"),

@@ -1,5 +1,5 @@
 /* GROKHOOD Desk service worker: app shell cache + Web Push. Never caches /api. */
-const CACHE = 'desk-v2';
+const CACHE = 'desk-v3';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'chart.js', 'share.js', 'manifest.json', 'icons/favicon.svg', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

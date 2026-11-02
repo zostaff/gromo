@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from . import bus, config, db, links, report
+from . import bus, config, copyfeed, db, links, nightpost, replay, report
 
 log = logging.getLogger("api")
 
@@ -527,6 +527,41 @@ async def stream(request: Request) -> StreamingResponse:
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.get("/api/copy")
+def copy_feed() -> dict:
+    return copyfeed.feed()
+
+
+@app.get("/api/replay")
+def replay_view(h: float = 24) -> dict:
+    return replay.summary(h)
+
+
+def _post_json(p: dict | None) -> dict:
+    if not p:
+        return {"date": None, "text": None, "cardUrl": None}
+    tok = os.environ.get("APP_TOKEN", "")
+    name = f"{p['date']}-card.png" if not p.get("preview") else "preview-card.png"
+    card = (report.REPORTS_DIR / name).is_file()
+    return {"date": p["date"], "text": p["text"], "cardUrl": f"/reports/{name}?t={tok}&v={int(db.now())}" if card else None}
+
+
+@app.get("/api/night-post")
+def night_post() -> dict:
+    return _post_json(nightpost.latest(report.REPORTS_DIR))
+
+
+@app.post("/api/night-post/preview")
+async def night_post_preview() -> dict:
+    date = datetime.now().astimezone().strftime("%Y-%m-%d")
+    p = await asyncio.to_thread(nightpost.build, report.night_start_ts(), date, report.REPORTS_DIR / "preview")
+    import shutil
+    src = report.REPORTS_DIR / "preview" / f"{date}-card.png"
+    if src.is_file():
+        shutil.copyfile(src, report.REPORTS_DIR / "preview-card.png")
+    return _post_json({"date": date, "text": p["text"], "preview": True})
+
+
 @app.get("/api/{rest:path}")
 def api_404(rest: str) -> Response:
     return err("not found", 404)
@@ -535,12 +570,12 @@ def api_404(rest: str) -> Response:
 # ---- reports + static --------------------------------------------------------------------
 @app.get("/reports/{name}")
 def report_file(name: str) -> Response:
-    if not name.endswith(".html") or "/" in name or ".." in name:
+    if not (name.endswith(".html") or name.endswith("-card.png")) or "/" in name or ".." in name:
         return err("not found", 404)
     p = report.REPORTS_DIR / name
     if not p.is_file():
         return err("not found", 404)
-    return FileResponse(p, media_type="text/html", headers=NO_CACHE)
+    return FileResponse(p, media_type="image/png" if name.endswith(".png") else "text/html", headers=NO_CACHE)
 
 
 def _static(path: str) -> Response:

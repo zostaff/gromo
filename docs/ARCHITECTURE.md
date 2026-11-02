@@ -124,3 +124,42 @@ Fans out to Telegram (if TG_TOKEN) and Web Push (db.push_subs). PAPER pushes sta
 Callback buttons are `("Bought", "cb:bought:<signal_id>")`, `("Sold", "cb:sold:<position_id>")`, `("Skip", "cb:skip:<signal_id>")`.
 Callback handling lives in `desk/actions.py` (`async def bought(signal_id)`, `sold(position_id)`, `skip(signal_id)`),
 used by both Telegram and the API.
+
+## Copy, Replay, Morning post (round 3)
+
+`GET /api/copy` reads the copy bot's own db (`data/copybot.db`, read only) and joins it with the desk:
+```
+{"state":"no_token|no_traders|running|stale","verified":bool,"lastPoll":ts|null,
+ "traders":[{"id","handle","name","trades24h":int,"lastTs":ts|null,"profileUrl":str|null}],
+ "hot":[{"address","chain","symbol","name","buyers":int,"handles":[str],"usd":float|null,"lastTs",
+         "coinUrl","desk":Desk}],                      // coins 2+ followed traders bought in 24h
+ "trades":[{"id","handle","ts","side":"buy|sell","address","chain","symbol","name","usd":float|null,
+            "mcap":float|null,"coinUrl","desk":Desk}]}  // last 50
+Desk = {"verdict":"cleared|rejected|watching|unseen","label":str|null}
+  cleared  "9/9 cleared"            (passed the Auditor)
+  rejected "Auditor · dev holds 31%" (agent · reason of the first refusal)
+  watching "Scanner · waiting"      (in the waiting room)
+  unseen   null                      (the desk never saw this coin)
+```
+`state`: no_token = no FOMO_TOKEN for the copy bot, no_traders = none followed, stale = last poll older than 10 min.
+
+`GET /api/replay?h=24` (window 6 to 168 h). For every coin the desk decided on in the window, price candles
+(GeckoTerminal, 1 minute) from the decision to decision + `replay.horizon_h` (6 h) and the Risk rules
+(stop, trailing stop, timeout, FOMO fees) simulated as if it had been bought at the decision price.
+Coins whose horizon has not passed yet are `pending`; coins with no pool or no candles are `noData`.
+```
+{"windowH":24,"horizonH":6,"pending":int,"noData":int,"evaluated":int,"updatedAt":ts|null,
+ "summary":{"refused":int,"dodged":int,"missed":int,"dumped":int,"runners":int,
+            "avgRefusedPct":float|null,"signals":int,"signalAvgPct":float|null},
+ "byStage":[{"stage":"scanner|auditor|analyst|executor","n":int,"dodged":int,"avgPct":float|null}],
+ "rows":[{"mint","chain","symbol","name","image","stage","reason","decidedAt","maxPct","minPct","endPct",
+          "simPct","simExit":"stop|trail|timeout|horizon","outcome":"dodged|missed|win|loss","coinUrl"}]}
+```
+refused = stages scanner/auditor/analyst; outcome dodged = simulated trade loses money, missed = makes money.
+executor = coins that got a Buy button; outcome win/loss. dumped = endPct <= -50, runners = maxPct >= 100.
+rows: up to 60, biggest |simPct| first.
+
+`GET /api/night-post` -> `{"date":str|null,"text":str|null,"cardUrl":str|null}` the last morning post.
+`POST /api/night-post/preview` -> `{"date","text","cardUrl"}` builds one now for the running night (does not end it).
+cardUrl is `/reports/<date>-card.png?t=APP_TOKEN` (1200x675 PNG). The 08:00 report sends the same card +
+text to Telegram as a ready X post. The desk never posts anywhere by itself.

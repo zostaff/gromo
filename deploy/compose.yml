@@ -13,6 +13,17 @@ services:
     ports:
       - "127.0.0.1:8890:8890"
     mem_limit: 400m
+  copybot:
+    # opt-in: docker compose --profile copy up -d (needs FOMO_TOKEN + COPYBOT_TG_TOKEN in .env)
+    profiles: ["copy"]
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "copybot.bot"]
+    volumes:
+      - desk-data:/app/data
+      - desk-logs:/app/logs
+    mem_limit: 200m
 volumes:
   desk-data:
   desk-logs:

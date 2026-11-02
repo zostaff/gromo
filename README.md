@@ -8,7 +8,7 @@
 <img src="https://img.shields.io/badge/agents-5-cdff00?style=for-the-badge&labelColor=000">
 <img src="https://img.shields.io/badge/audit-9_layers-cdff00?style=for-the-badge&labelColor=000">
 <img src="https://img.shields.io/badge/chains-Solana_%2B_Robinhood-cdff00?style=for-the-badge&labelColor=000">
-<img src="https://img.shields.io/badge/tests-101_passing-00d35a?style=for-the-badge&labelColor=000">
+<img src="https://img.shields.io/badge/tests-114_passing-00d35a?style=for-the-badge&labelColor=000">
 </p>
 
 The desk never places an order and never holds a key. FOMO has no public order API, so every signal ends with a **Buy on FOMO** / **Sell on FOMO** button that opens the coin in FOMO, where you trade yourself. Rug-ring detection on Robinhood Chain comes from [GROKHOOD](https://grokhood.tech).
@@ -42,6 +42,30 @@ Every reject names the agent, the layer or rule and the value: `Auditor · dev h
 
 A black iOS web app you add to your home screen: live balance with an odometer, a hand-drawn canvas chart with buy and exit marks, a carousel of the 5 agents working in real time, the Auditor taking a coin apart layer by layer, live candles with the Risk exit line, and every setting as a slider. Push notifications through Telegram and Web Push, each with its FOMO button.
 
+## Replay: the desk grades its own "no"
+
+<p align="center">
+<img src="docs/screens/replay.png" width="230">
+<img src="docs/cards/replay.png" width="62%">
+</p>
+
+A desk that refuses most coins looks smart by default, because most memecoins die. Replay checks it. For every coin the desk decided on, it pulls 1-minute candles (GeckoTerminal) for the next 6 hours and simulates a buy at the decision under the desk's own Risk rules: -6% stop, 12% trail after +20%, 3h timeout, FOMO fees both ways. A refused coin that would have lost money is **dodged**, one that would have made money is **missed**. The simulator is pessimistic on purpose: inside a candle the stop is checked first, the trail only uses earlier peaks, gaps exit at the open, and no candles means no data, never a win.
+
+## Copy tab: top traders, second opinion
+
+<p align="center">
+<img src="docs/screens/copy.png" width="230">
+<img src="docs/screens/account-post.png" width="230">
+</p>
+
+The copy bot's trades show up in the app next to what the Auditor thinks of each coin: `9/9 cleared`, `Auditor · dev holds 31%` or `Desk has not seen it`. Coins 2+ of your traders bought in 24h rise to **Hot now**. Every row has a **Copy on FOMO** button.
+
+## Morning post
+
+At 08:00 the desk closes the night, writes the HTML report and sends a ready X post to Telegram: a 1200x675 card plus the text, every number from the db. It never posts by itself. Preview tonight's post any time in Account.
+
+<p align="center"><img src="docs/cards/night-post.png" width="70%"></p>
+
 ## Share cards
 
 One tap on Share turns a trade, a night or an audit into a bright 1200x675 (or 1080x1350) card for X, straight into the iPhone share sheet. Only real numbers from the desk go on the card.
@@ -61,7 +85,7 @@ It reads FOMO's own app API, which is unofficial and can break any day, with a s
 ## Run it
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install httpx websockets fastapi uvicorn pydantic pywebpush
+python3 -m venv .venv && .venv/bin/pip install httpx websockets fastapi uvicorn pydantic pywebpush pillow
 cp .env.example .env          # optional keys: XAI_API_KEY, TG_TOKEN, FOMO_REF
 .venv/bin/python scripts/probe.py   # proves every data source answers
 .venv/bin/python -m desk.main       # prints the app URL once
@@ -69,13 +93,15 @@ cp .env.example .env          # optional keys: XAI_API_KEY, TG_TOKEN, FOMO_REF
 
 Open the printed URL on your phone, then Share, Add to Home Screen. The desk starts in **PAPER** mode with a simulated stack, real prices and real FOMO fees. LIVE unlocks only after one full PAPER night and typing `LIVE`.
 
+Docker: `docker compose -f deploy/compose.yml up -d` (add `--profile copy` for the copy bot once `FOMO_TOKEN` and `COPYBOT_TG_TOKEN` are in `.env`).
+
 Talk to it in Telegram: `why X`, `buy X`, `set stop to -8%`, `pause scanner`, `status`, `report`.
 
 ## Honest notes
 
 - This is a tool, not a strategy. The Auditor makes rugs rarer, it does not make them impossible.
 - PAPER exits at the real polled price, gaps included.
-- Public Solana RPC works today for every layer; if your RPC refuses `getProgramAccounts`, layer 8 turns every coin red until you point `desk.rpc_url` at one that allows it.
+- Holder reads use `getProgramAccounts` with a 97-byte `dataSlice`, streamed with a 24 MB cap, so one huge mint cannot take the desk down. Public Solana RPC works today for every layer; if your RPC refuses `getProgramAccounts`, layer 8 turns every coin red until you point `desk.rpc_url` at one that allows it.
 - No number on screen is made up: missing data shows as n/a. Images in this README come from the built-in demo mode (marked DEMO), the live desk shows PAPER or LIVE.
 
 ## Layout

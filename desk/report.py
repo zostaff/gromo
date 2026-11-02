@@ -197,11 +197,21 @@ def write_report(end: bool) -> tuple[str, Path]:
 
 
 async def run_morning() -> str:
-    from . import notify
+    from . import nightpost, notify
+    night = db.current_night()
+    since = float(night["started_at"]) if night else db.now() - 86400
+    date = datetime.now().astimezone().strftime("%Y-%m-%d")
+    post = None
+    try:
+        post = nightpost.build(since, date, REPORTS_DIR)      # before the night ends: its numbers
+    except Exception:  # noqa: BLE001
+        log.exception("night post failed")
     date, _ = write_report(end=True)
     url = report_url(date)
     await notify.push(f"Morning report {date} is ready. New night started.", [("Open report", url)],
                       kind="report")
+    if post:
+        await nightpost.send(post, url)
     return url
 
 

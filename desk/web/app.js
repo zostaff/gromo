@@ -73,6 +73,7 @@
     ext: '<svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4"/></svg>',
     check: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.4 3 3 6-6.6"/></svg>',
     x: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg>',
+    replay: '<svg viewBox="0 0 24 24"><path d="M4.6 13.4A7.6 7.6 0 1 0 6.8 6.6"/><path d="M5.4 3.6v3.9h3.9"/><path d="M12 8.4v4l2.8 1.8"/></svg>',
     shield: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.2 13.5 3.4v4.2c0 3.2-2.2 5.6-5.5 7.2C4.7 13.2 2.5 10.8 2.5 7.6V3.4z" opacity=".25"/><path d="m5.3 8 1.9 1.9 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
   const AG = {
@@ -145,6 +146,7 @@
   const S = {
     state: null, chart: {}, range: 'LIVE', activity: null, account: null, settings: null,
     coin: {}, audit: {}, decisions: {}, unreadSeen: false, layerLive: {},
+    copy: null, replay: {}, replayH: 24, nightPost: null, nightPreview: null,
   };
   let stateTimer = null;
   function refreshStateSoon() {
@@ -223,7 +225,7 @@
   }
 
   /* ================= router ================= */
-  const TABS = ['home', 'agents', 'activity', 'account'];
+  const TABS = ['home', 'agents', 'copy', 'activity', 'account'];
   let current = null;
   const stack = [];
   function parse(hash) {
@@ -232,6 +234,7 @@
     let arg = p[1] ? decodeURIComponent(p[1]) : null;
     if (DEMO && arg && arg[0] === '$' && Demo.bySym[arg.slice(1)]) arg = Demo.bySym[arg.slice(1)].mint; // demo shortcut: #/coin/$HCAT
     if ((name === 'coin' || name === 'audit') && arg) return { name, arg, depth: 1 };
+    if (name === 'replay') return { name, arg, depth: 1 };
     return { name: TABS.includes(name) ? name : 'home', depth: 0 };
   }
   const PAGES = {};
@@ -411,6 +414,22 @@
     },
   };
 
+  /* ================= replay pieces (home card, agents link, replay page) ================= */
+  const REFUSED = ['scanner', 'auditor', 'analyst'];
+  function replayHeadline(s, cls) {
+    s = s || {};
+    if (num(s.refused) === 0) return 'Desk has not said no to a coin in this window yet';
+    return `Desk said no to <b>${intf(s.refused)}</b> coin${num(s.refused) === 1 ? '' : 's'}, <b class="${cls || 'lime'}">${intf(s.dodged)}</b> of them would have lost money`;
+  }
+  function replayCard(d) {
+    const s = d.summary || {};
+    const st = (d.byStage || []).filter((x) => REFUSED.includes(x.stage) && num(x.n) > 0);
+    const bar = st.length ? `<div class="rc-bar">${st.map((x) => `<i style="flex:${+x.n};background:${AG[x.stage].hex}"></i>`).join('')}</div>
+      <div class="rc-leg">${st.map((x) => `<span style="--c:${AG[x.stage].hex}">${AG[x.stage].label} ${intf(x.n)}</span>`).join('')}</div>` : '';
+    return `<a class="rcard" href="#/replay"><div class="rc-h"><span class="rc-t">${I.replay}Replay · last 24h</span><span class="chev">›</span></div>
+      <div class="rc-line">${replayHeadline(s)}</div>${bar}</a>`;
+  }
+
   /* ================= HOME ================= */
   PAGES.home = function () {
     const page = { el: el(`<section>
@@ -430,6 +449,7 @@
       <div class="chart-wrap"><canvas></canvas><div class="chart-empty" hidden></div></div>
       <div class="ranges">${['LIVE', '1H', '4H', '1D', '1W', 'ALL'].map((r) => `<button data-r="${r}">${r === 'LIVE' ? '<i class="ldot"></i>' : ''}${r}</button>`).join('')}</div>
       <div class="chart-sep"></div>
+      <div data-replay></div>
       <div class="section-h"><h2 data-agh>Agents</h2></div>
       <div class="carousel"></div>
       <div class="dots">${ORDER.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>
@@ -489,6 +509,17 @@
       const rows = (S.activity.rows || []).slice(0, 5);
       box.innerHTML = rows.length ? rows.map((r) => actRow(r)).join('') : '<div class="empty"><div class="dash"></div>Nothing yet tonight</div>';
     }
+    function paintReplay() {
+      const box = $('[data-replay]', root);
+      const d = S.replay[24];
+      if (d === undefined) { box.innerHTML = `<div class="rcard">${skel('40%', 14)}${skel('92%', 22, 'margin-top:12px')}${skel('70%', 22, 'margin-top:6px')}${skel('100%', 8, 'margin-top:16px')}</div>`; return; }
+      if (!d) { box.innerHTML = ''; return; }
+      box.innerHTML = replayCard(d);
+    }
+    async function loadReplay() {
+      try { S.replay[24] = await api('/api/replay?h=24'); } catch (e) { if (S.replay[24] === undefined) S.replay[24] = null; }
+      paintReplay();
+    }
     async function loadChart(r) {
       try { S.chart[r] = await api('/api/chart?range=' + r); net.ok(); if (S.range === r) paintChart(); }
       catch (e) { net.fail(() => loadChart(r), e); }
@@ -496,7 +527,7 @@
     $$('.ranges button', root).forEach((b) => b.addEventListener('click', () => { S.range = b.dataset.r; paintChart(); loadChart(S.range); }));
 
     page.load = async function load() {
-      paintHero(false); paintChart(); paintAct();
+      paintHero(false); paintChart(); paintAct(); paintReplay(); loadReplay();
       try {
         const [st, ch, ac] = await Promise.all([api('/api/state'), api('/api/chart?range=' + S.range), api('/api/activity')]);
         S.state = st; S.chart[S.range] = ch; S.activity = ac;
@@ -590,6 +621,7 @@
     const page = { el: el(`<section><header class="nav"><div class="nav-center">Agents</div><div class="grow"></div></header>
       <h1 class="large-title">Agents</h1><div class="offline"></div>
       <div class="muted" style="padding:0 16px 16px;font-size:15px">Scanner → Auditor → Analyst → Executor → Risk</div>
+      <div class="group" style="margin-bottom:14px"><a class="cell link" href="#/replay" style="min-height:60px"><span class="glyph" style="background:rgba(205,255,0,0.14);color:var(--lime)">${I.replay}</span><div class="cl">Replay<small data-rpl>What the refused coins did next</small></div><span class="chev">›</span></a></div>
       <div data-list>${ORDER.map(() => `<div class="bigcard">${skel('50%', 24)}${skel('100%', 160, 'margin:16px 0 12px')}</div>`).join('')}</div></section>`) };
     const root = page.el;
     const openMore = {};
@@ -629,8 +661,13 @@
       const href = r.mint ? (bad ? '#/audit/' : '#/coin/') + encodeURIComponent(r.mint) : '';
       return `<a class="dec" ${href ? `href="${href}"` : ''}><span class="dt">${esc(time(r.ts))}</span><span class="dn">${esc(r.name || '')}</span><span class="dr">${esc(r.reason || '')}</span><span class="pill ${good ? 'green' : bad ? 'red' : 'grey'}">${esc(v)}</span></a>`;
     }
+    function paintRpl() {
+      const d = S.replay[24]; const sm = d && d.summary; const t = $('[data-rpl]', root);
+      if (t && sm && num(sm.refused) != null) t.textContent = `24h: ${intf(sm.refused)} refused, ${intf(sm.dodged)} would have lost money`;
+    }
     page.load = async function load() {
-      paint();
+      paint(); paintRpl();
+      api('/api/replay?h=24').then((d) => { S.replay[24] = d; paintRpl(); }).catch(() => {});
       try {
         S.state = await api('/api/state'); net.ok(); paint();
         await Promise.all(ORDER.map(async (n) => { try { S.decisions[n] = await api(`/api/agents/${n}/decisions`); } catch (e) { S.decisions[n] = S.decisions[n] || { rows: [] }; } }));
@@ -638,6 +675,167 @@
       } catch (e) { net.fail(load, e); }
     };
     page.onState = paint;
+    return page;
+  };
+
+  /* ================= COPY ================= */
+  // the Desk's opinion on a coin someone copied: the selling point of the tab, so it is always shown
+  function deskChip(d, big) {
+    const v = d && d.verdict;
+    const cls = v === 'cleared' ? 'ok' : v === 'rejected' ? 'bad' : v === 'watching' ? 'wait' : 'unseen';
+    const label = v === 'cleared' ? (d.label || 'Cleared') : v === 'rejected' ? (d.label || 'Rejected') : v === 'watching' ? (d.label || 'Watching') : 'Desk has not seen it';
+    const ic = !big ? '' : v === 'cleared' ? I.check : v === 'rejected' ? I.x : '';
+    return `<span class="dchip ${cls}${big ? ' big' : ''}"><img class="dm" src="icons/favicon.svg" alt="">${ic ? `<i>${ic}</i>` : ''}<span>${esc(label)}</span></span>`;
+  }
+  const handleTxt = (h) => '@' + String(h || '?').replace(/^@/, '');
+  function handleAv(h, big) {
+    const n = String(h || '?').replace(/^@/, '');
+    return `<i class="hav${big ? ' big' : ''}" style="background:${PALETTE[hashStr(n) % PALETTE.length]}">${esc(n.charAt(0).toUpperCase() || '?')}</i>`;
+  }
+  const copyBtn = (url) => (url ? `<a class="copybtn" href="${esc(url)}">Copy on FOMO</a>` : '');
+  const agoText = (ts) => { if (!ts) return 'n/a'; const a = ago(ts); return a === 'now' ? 'just now' : a + ' ago'; };
+  const coinHref = (address, desk) => {
+    const v = desk && desk.verdict;
+    if (!address || !v || v === 'unseen') return '';
+    return (v === 'rejected' ? '#/audit/' : '#/coin/') + encodeURIComponent(address);
+  };
+
+  PAGES.copy = function () {
+    const page = { el: el(`<section><header class="nav"><div class="nav-center">Copy</div><div class="grow"></div></header>
+      <h1 class="large-title">Copy</h1><div class="offline"></div>
+      <div data-c><div class="cstate">${skel('12px', 12, 'border-radius:6px')}<div class="cl">${skel('55%', 18)}${skel('40%', 13, 'margin-top:8px')}</div></div>
+      <div class="section-h"><h2>Hot now</h2></div>${Array.from({ length: 2 }, () => `<div class="hot">${skel('60%', 20)}${skel('40%', 14, 'margin-top:12px')}${skel('100%', 30, 'margin-top:14px')}</div>`).join('')}</div></section>`) };
+    const root = page.el, box = $('[data-c]', root);
+    let all = false;
+    function stateCard(d) {
+      const n = (d.traders || []).length;
+      if (d.state === 'no_token') return `<div class="cstate off"><span class="glyph" style="background:rgba(255,159,10,0.16);color:var(--orange)">${AG.executor.glyph}</span>
+        <div class="cl"><b>Copy bot is not connected</b><small>Add <code>FOMO_TOKEN</code> of a separate empty FOMO account to the copy bot</small></div></div>`;
+      if (d.state === 'no_traders') return `<div class="cstate off"><span class="glyph" style="background:rgba(205,255,0,0.14);color:var(--lime)">${AG.scanner.glyph}</span>
+        <div class="cl"><b>No traders followed yet</b><small>Import the top traders in the copy bot: <code>/top</code></small></div></div>`;
+      if (d.state === 'stale') return `<div class="cstate warn"><span class="sdot"></span><div class="cl"><b>Copy bot is quiet</b><small>Last poll ${agoText(d.lastPoll)}. Check that the copy bot is running</small></div></div>`;
+      if (d.state === 'running') return `<div class="cstate"><span class="sdot live"></span><div class="cl"><b>Copying ${intf(n)} trader${n === 1 ? '' : 's'}</b><small>Last poll ${agoText(d.lastPoll)}</small></div>${d.verified ? '<span class="pill green">FOMO verified</span>' : '<span class="pill orange">Not verified</span>'}</div>`;
+      return `<div class="cstate warn"><span class="sdot"></span><div class="cl"><b>Copy bot state unknown</b><small>Open the copy bot to check it</small></div></div>`;
+    }
+    function hotCard(h) {
+      const hs = h.handles || [];
+      const href = coinHref(h.address, h.desk);
+      const coin = { mint: h.address, chain: h.chain, symbol: h.symbol, name: h.name, image: h.image };
+      const who = hs.slice(0, 3).map(handleTxt).join(', ') + (hs.length > 3 ? ` +${hs.length - 3}` : '');
+      return `<div class="hot">
+        <${href ? `a href="${href}"` : 'div'} class="hot-top">${coinAvatar(coin)}<div class="rt"><b>${esc(h.name || h.symbol || 'n/a')}</b><span>${esc(h.symbol ? '$' + String(h.symbol).replace(/^\$/, '') : '')} · ${compact(h.usd)} bought · ${h.lastTs ? ago(h.lastTs) : 'n/a'}</span></div>
+          <div class="hot-n"><b>${intf(h.buyers)}</b><span>buyer${num(h.buyers) === 1 ? '' : 's'}</span></div></${href ? 'a' : 'div'}>
+        <div class="hot-who"><span class="stackav">${hs.slice(0, 4).map((x) => handleAv(x)).join('')}</span><span class="hw">${esc(who)}</span>${copyBtn(h.coinUrl)}</div>
+        <div class="hot-foot"><span class="hot-k">Desk</span>${deskChip(h.desk, true)}</div></div>`;
+    }
+    function tradeRow(t) {
+      const buy = t.side === 'buy';
+      const coin = { mint: t.address, chain: t.chain, symbol: t.symbol, name: t.name, image: t.image };
+      const href = coinHref(t.address, t.desk);
+      const sy = t.symbol ? '$' + String(t.symbol).replace(/^\$/, '') : (t.name || 'n/a');
+      return `<div class="trow"><${href ? `a href="${href}"` : 'div'} class="tr1">${coinAvatar(coin)}
+        <div class="rt"><b><span class="side ${buy ? 'buy' : 'sell'}">${buy ? 'BUY' : 'SELL'}</span>${esc(sy)}</b><span>${esc(handleTxt(t.handle))} · ${t.ts ? ago(t.ts) : 'n/a'}</span></div>
+        <div class="rv"><b>${usd(t.usd)}</b><span>mcap ${compact(t.mcap)}</span></div></${href ? 'a' : 'div'}>
+        <div class="tr2">${deskChip(t.desk)}${t.coinUrl ? `<a class="copybtn ghost" href="${esc(t.coinUrl)}">Copy on FOMO</a>` : ''}</div></div>`;
+    }
+    function traderCell(t) {
+      const inner = `${handleAv(t.handle, true)}<div class="cl">${esc(handleTxt(t.handle))}<small>${esc([t.name, t.lastTs ? 'last trade ' + ago(t.lastTs) : 'no trades yet'].filter(Boolean).join(' · '))}</small></div>
+        <span class="cv">${intf(t.trades24h)} in 24h</span>`;
+      return t.profileUrl ? `<a class="cell link" href="${esc(t.profileUrl)}" target="_blank" rel="noopener">${inner}<span class="chev">›</span></a>` : `<div class="cell">${inner}</div>`;
+    }
+    function paint() {
+      const d = S.copy; if (!d) return;
+      const hot = d.hot || [], trades = d.trades || [], traders = d.traders || [];
+      const live = d.state === 'running' || d.state === 'stale';
+      const shown = all ? trades : trades.slice(0, 12);
+      box.innerHTML = stateCard(d)
+        + (live || hot.length ? `<div class="section-h"><h2>Hot now <span class="muted">· 2+ traders</span></h2></div>
+          ${hot.length ? hot.map(hotCard).join('') : '<div class="empty" style="padding:18px var(--g)">No coin bought by 2 followed traders in 24h</div>'}` : '')
+        + (live || trades.length ? `<div class="section-h"><h2>Trades</h2></div><div class="section-sub">What followed traders did, with the desk's verdict</div>
+          <div class="list">${trades.length ? shown.map(tradeRow).join('') + (trades.length > shown.length || all ? `<button class="more" data-more>${all ? 'Show less' : `Show all ${trades.length}`}</button>` : '') : '<div class="empty" style="padding:18px 0">No trades from followed traders yet</div>'}</div>` : '')
+        + (traders.length ? `<div class="group-h">Traders · ${intf(traders.length)} followed</div><div class="group">${traders.map(traderCell).join('')}</div>` : '')
+        + '<div class="group-f" style="text-align:center;padding:24px 16px 0">The copy bot buys from its own FOMO account.<br>The desk only shows what it thinks of each coin.</div>';
+      const m = $('[data-more]', box); if (m) m.onclick = () => { all = !all; paint(); };
+    }
+    async function refresh() { try { S.copy = await api('/api/copy'); net.ok(); const y = root.scrollTop; paint(); root.scrollTop = y; } catch (e) { /* keep last */ } }
+    page.load = async function load() {
+      paint();
+      try { S.copy = await api('/api/copy'); net.ok(); paint(); } catch (e) { net.fail(load, e); }
+    };
+    const timer = setInterval(refresh, 30000);
+    page.destroy = () => clearInterval(timer);
+    return page;
+  };
+
+  /* ================= REPLAY ================= */
+  const RANGES_H = [[24, '24H'], [72, '3D'], [168, '7D']];
+  const OUTCOME = { dodged: ['green', 'Dodged'], missed: ['orange', 'Missed'], win: ['green', 'Win'], loss: ['red', 'Loss'] };
+  const EXIT_K = { stop: 'stop', trail: 'trailing stop', timeout: 'timeout', horizon: 'held to the end' };
+  const stageChip = (s) => (AG[s] ? `<span class="pill" style="background:${AG[s].hex}26;color:${AG[s].hex}">${AG[s].label}</span>` : '');
+  PAGES.replay = function () {
+    const shareArg = { h: S.replayH };
+    const page = { el: el(`<section>${navBack('Replay')}<div class="rp-head"><h1>Replay</h1><p>What the desk said no to, played forward</p></div>
+      <div class="rp-chips">${RANGES_H.map(([h, l]) => `<button data-h="${h}">${l}</button>`).join('')}</div><div class="offline"></div><div data-c></div></section>`) };
+    const root = page.el; bindBack(root);
+    const box = $('[data-c]', root);
+    navShare(root, 'replay', shareArg);
+    function skelView() {
+      box.innerHTML = `<div class="rp-hero">${skel('30%', 12)}${skel('40%', 70, 'margin-top:10px')}${skel('80%', 18, 'margin-top:14px')}${skel('60%', 18, 'margin-top:6px')}</div>
+        <div class="tiles">${Array.from({ length: 6 }, () => `<div class="tile">${skel('70%', 12)}${skel('60%', 24, 'margin-top:6px')}</div>`).join('')}</div>
+        <div class="section-h"><h2>By stage</h2></div><div class="funnel">${Array.from({ length: 4 }, () => `<div class="frow">${skel('100%', 14)}</div>`).join('')}</div>`;
+    }
+    function tile(label, value, cls, small) { return `<div class="tile"><span>${label}</span><b class="${cls || ''}">${value}</b>${small ? `<small>${small}</small>` : ''}</div>`; }
+    const signCls = (v) => (num(v) == null ? 'faint' : v > 0 ? 'up' : v < 0 ? 'down' : '');
+    function paint() {
+      $$('.rp-chips button', root).forEach((b) => b.classList.toggle('on', +b.dataset.h === S.replayH));
+      const d = S.replay[S.replayH];
+      if (d === undefined) { skelView(); return; }
+      if (!d) { box.innerHTML = '<div class="empty"><div class="dash"></div><b>Replay is not available</b>The desk could not build it right now</div>'; return; }
+      const s = d.summary || {};
+      const label = (RANGES_H.find((r) => r[0] === S.replayH) || [0, (d.windowH || S.replayH) + 'H'])[1];
+      const stages = d.byStage || [];
+      const max = Math.max(1, ...stages.map((x) => num(x.n) || 0));
+      const rows = d.rows || [];
+      const funnel = stages.length ? stages.map((x) => {
+        const a = AG[x.stage] || { label: x.stage, hex: '#8e8e93' };
+        const n = num(x.n) || 0, dg = num(x.dodged) || 0;
+        const ex = x.stage === 'executor';
+        return `<div class="frow">${AG[x.stage] ? glyph(x.stage) : ''}<span class="fl">${esc(a.label)}<small class="${signCls(x.avgPct)}">avg ${pct(x.avgPct, 1)}</small></span>
+          <div class="fb"><i style="width:${(n / max) * 100}%;background:${a.hex}40"><b style="width:${ex ? 100 : n ? (dg / n) * 100 : 0}%;background:${a.hex}"></b></i></div>
+          <div class="fv"><b>${intf(x.n)}</b><span>${ex ? 'Buy buttons' : intf(x.dodged) + ' dodged'}</span></div></div>`;
+      }).join('') : '<div class="empty" style="padding:18px 0">No decisions in this window</div>';
+      const rowHtml = (r) => {
+        const o = OUTCOME[r.outcome] || ['grey', r.outcome || 'n/a'];
+        return `<a class="row rp-row" ${r.mint ? `href="#/coin/${encodeURIComponent(r.mint)}"` : ''}>${coinAvatar(r)}
+          <div class="rt"><b><em>${esc(r.symbol ? '$' + String(r.symbol).replace(/^\$/, '') : r.name || 'n/a')}</em><span class="pill ${o[0]}">${esc(o[1])}</span></b><span>${stageChip(r.stage)}<i>${esc(r.reason || '')}</i></span></div>
+          <div class="rv"><b class="${signCls(r.simPct)}">${pct(r.simPct, 1)}</b><span>${esc(EXIT_K[r.simExit] || r.simExit || 'n/a')} · end ${pct(r.endPct, 0)}</span></div></a>`;
+      };
+      box.innerHTML = `
+        <div class="rp-hero"><img class="rp-m" src="icons/favicon.svg" alt="">
+          <div class="rp-k">LAST ${esc(label)} · ${intf(d.evaluated)} REPLAYED</div>
+          <div class="rp-big"><b>${intf(s.dodged)}</b><span>coins<br>dodged</span></div>
+          <p class="rp-line">${replayHeadline(s)}</p></div>
+        <div class="tiles">
+          ${tile('Dodged', intf(s.dodged), 'up', 'would have lost')}
+          ${tile('Missed', intf(s.missed), '', 'would have won')}
+          ${tile('Dumped', intf(s.dumped), 'down', 'fell 50% or more')}
+          ${tile('Runners', intf(s.runners), '', 'went 2x or more')}
+          ${tile('Avg refused', pct(s.avgRefusedPct, 1), signCls(s.avgRefusedPct), 'if bought anyway')}
+          ${tile('Signals avg', pct(s.signalAvgPct, 1), signCls(s.signalAvgPct), intf(s.signals) + ' Buy buttons')}
+        </div>
+        <div class="section-h"><h2>By stage</h2></div>
+        <div class="funnel">${funnel}</div>
+        <div class="section-h"><h2>Coins</h2></div><div class="section-sub">Biggest simulated moves first</div>
+        <div class="list">${rows.length ? rows.map(rowHtml).join('') : '<div class="empty" style="padding:22px 0"><div class="dash"></div>Nothing replayed yet</div>'}</div>
+        <div class="group-f rp-note">${intf(d.pending)} pending · ${intf(d.noData)} without price data. Each coin is replayed for ${num(d.horizonH) != null ? intf(d.horizonH) + 'h' : 'n/a'} from the decision with the desk's stop, trailing stop, timeout and FOMO fees, as if bought at the decision price.</div>`;
+    }
+    async function load(h) {
+      paint();
+      try { const d = await api('/api/replay?h=' + h); S.replay[h] = d; net.ok(); if (S.replayH === h) paint(); }
+      catch (e) { if (S.replay[h] === undefined) { net.fail(() => load(h), e); } }
+    }
+    $$('.rp-chips button', root).forEach((b) => b.addEventListener('click', () => { S.replayH = +b.dataset.h; shareArg.h = S.replayH; paint(); load(S.replayH); }));
+    page.load = () => load(S.replayH);
     return page;
   };
 
@@ -947,6 +1145,9 @@
           <span class="avatar" style="width:52px;height:52px"><img src="icons/favicon.svg" alt=""></span>
           <div class="cl"><b style="font-size:20px">${esc(a.handle ? '@' + String(a.handle).replace(/^@/, '') : 'GROKHOOD Desk')}</b><small>${a.mode === 'LIVE' ? 'LIVE stack' : 'PAPER stack'} · ${usd(a.stack)}</small></div>${modePill()}</div></div>
 
+        <div class="group-h">Morning post</div>
+        <div data-post></div>
+
         <div class="group-h">Mode</div>
         <div class="group">
           <div class="cell"><div class="cl">Trading mode</div><div class="seg" data-mode><button data-m="PAPER" class="${a.mode === 'PAPER' ? 'on' : ''}">PAPER</button><button data-m="LIVE" class="${a.mode === 'LIVE' ? 'on' : ''}">LIVE</button></div></div>
@@ -984,6 +1185,40 @@
         ${S.settings ? '' : `<div class="group-h">Settings</div><div class="group">${Array.from({ length: 4 }, () => `<div class="cell">${skel('80%', 18)}</div>`).join('')}</div>`}
         <div class="group-f" style="text-align:center;padding:28px 16px 0">GROKHOOD Desk never holds keys and never places orders.<br>You tap Buy and Sell on FOMO.</div>`;
       bind();
+      paintPost();
+    }
+    let showPreview = false, previewBusy = false;
+    function postDate(d) {
+      const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return d ? String(d) : 'n/a';
+      return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    function paintPost() {
+      const box2 = $('[data-post]', box); if (!box2) return;
+      const p = showPreview && S.nightPreview ? S.nightPreview : S.nightPost;
+      if (p === null || p === undefined) {
+        box2.innerHTML = !S.nightPostFailed ? `<div class="npost"><div class="np-img"></div><div style="padding:14px 16px">${skel('40%', 13)}${skel('100%', 90, 'margin-top:10px')}</div></div>` : '<div class="group"><div class="cell"><div class="cl muted">Could not load the last post</div></div></div>';
+        return;
+      }
+      const prevBtn = `<button class="cta ghost" data-preview ${previewBusy ? 'disabled style="opacity:.5"' : ''}>${previewBusy ? 'Building...' : showPreview ? 'Last post' : 'Preview tonight'}</button>`;
+      if (!p.date) {
+        box2.innerHTML = `<div class="npost"><div class="empty" style="padding:30px 16px 8px"><div class="dash"></div><b>No morning post yet</b>First post arrives after the 08:00 report</div><div class="np-btns">${prevBtn}</div></div>`;
+      } else {
+        box2.innerHTML = `<div class="npost">
+          ${p.cardUrl ? `<a class="np-img" href="${esc(p.cardUrl)}" target="_blank" rel="noopener"><img src="${esc(p.cardUrl)}" alt="Morning post card"></a>` : ''}
+          <div class="np-meta">${showPreview ? '<span class="pill orange">Preview</span><span>Tonight so far · not sent</span>' : `<span>${esc(postDate(p.date))} · 08:00 report</span>`}</div>
+          <div class="np-text">${p.text ? esc(p.text) : '<span class="muted">n/a</span>'}</div>
+          <div class="np-btns">${p.text ? '<button class="cta lime" data-copytext>Copy text</button>' : ''}${prevBtn}</div></div>`;
+      }
+      const ct = $('[data-copytext]', box2);
+      if (ct) ct.onclick = async () => { try { await navigator.clipboard.writeText(p.text); toast('Text copied'); } catch (e) { toast('Could not copy'); } };
+      $('[data-preview]', box2).onclick = async () => {
+        if (showPreview) { showPreview = false; paintPost(); return; }
+        previewBusy = true; paintPost();
+        try { S.nightPreview = await api('/api/night-post/preview', { method: 'POST' }); showPreview = true; }
+        catch (e) { toast(e.message); }
+        previewBusy = false; paintPost();
+      };
     }
     function glyphMini(g) { return AG[g] ? `<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${AG[g].hex};margin-right:6px"></span>` : ''; }
     function scale(s) {
@@ -1088,6 +1323,7 @@
     page.load = async function load() {
       paint();
       try {
+        api('/api/night-post').then((p) => { S.nightPost = p; S.nightPostFailed = false; paintPost(); }).catch(() => { S.nightPostFailed = true; paintPost(); });
         const [a, s] = await Promise.all([api('/api/account'), api('/api/settings')]);
         S.account = a; S.settings = s; net.ok(); paint();
         if (!S.state) api('/api/state').then((st) => { S.state = st; paint(); }).catch(() => {});
@@ -1299,6 +1535,10 @@
       if (p === '/api/search') { const q = (u.searchParams.get('q') || '').toLowerCase(); return { rows: Object.values(coins).filter((c) => (c.name + ' ' + c.symbol + ' ' + c.mint).toLowerCase().includes(q)).slice(0, 12).map((c) => ({ mint: c.mint, name: c.name, symbol: c.symbol, chain: c.chain })) }; }
       if (p === '/api/read') { st.unread = 0; return { unread: 0 }; }
       if (p === '/api/test-push' || p === '/api/push') return { ok: true };
+      if (p === '/api/copy') return copyObj(empty ? 'no_traders' : qs.get('copy'));
+      if (p === '/api/replay') return replayObj(+u.searchParams.get('h') || 24, empty);
+      if (p === '/api/night-post' && m === 'GET') return nightPostObj(false, empty || qs.get('post') === 'none');
+      if (p === '/api/night-post/preview' && m === 'POST') { await wait(500); return nightPostObj(true, false); }
       const e = new Error('not found'); e.status = 404; throw e;
     }
     function streamDemo(emit) {
@@ -1324,6 +1564,112 @@
       setInterval(() => { if (exec.state === 'executing') { exec.progress = Math.min(100, exec.progress + 7); if (exec.progress >= 100) { exec.state = 'filled'; emit('fill', { mint: hc.mint, name: hc.symbol, state: 'filled', progress: 100 }); setTimeout(() => { exec.state = 'executing'; exec.progress = 8; }, 6000); } else emit('signal', { mint: hc.mint, name: hc.symbol, state: 'executing', progress: exec.progress }); } }, 900);
       // analyst
       setInterval(() => { const c = coins[keys[Math.floor(rnd() * keys.length)]]; const sc = Math.floor(48 + rnd() * 46); scoring = { mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }); }, 7000);
+    }
+    // ---- round 3 fixtures: copy bot, replay, morning post. Own seeded generators, so the fixtures above stay the same ----
+    const rngOf = (s0) => { let a = s0 | 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+    const r3 = rngOf(31337);
+    const b58 = (r, n) => Array.from({ length: n }, () => B58[Math.floor(r() * 58)]).join('');
+    const extraCoins = {};
+    [['Pocket Panda', 'PANDA', 'solana', 1.9e6], ['Zen Zebra', 'ZEBRA', 'solana', 6.4e5], ['Sigma Snail', 'SNAIL', 'solana', 3.1e5]].forEach(([name, symbol, chain, mc]) => { extraCoins[symbol] = { name, symbol, chain, mint: b58(r3, 43) + 'p', marketCap: mc }; });
+    const ccoin = (sy) => bySym[sy] || extraCoins[sy];
+    const DESKV = {
+      LFROG: ['cleared', null], OTTER: ['cleared', null], SIRP: ['cleared', null], HCAT: ['cleared', null], BYTE: ['cleared', null],
+      DUCK: ['rejected', 'Auditor · dev holds 31%'], GLAPE: ['rejected', 'Auditor · top 10 hold 44%'], GOOSE: ['rejected', 'Analyst · chase 0.41'], RONIN: ['rejected', 'Auditor · Safety Score 41'],
+      NEWT: ['watching', 'Scanner · waiting'], CORGI: ['watching', 'Scanner · waiting'],
+    };
+    const deskOf = (sy) => { const v = DESKV[sy]; if (!v) return { verdict: 'unseen', label: null }; return { verdict: v[0], label: v[0] === 'cleared' ? NL + '/' + NL + ' cleared' : v[1] }; };
+    const TRADERS = [['moonmaxi', 'Moon Maxi'], ['solsniper', 'Sol Sniper'], ['degenpriya', 'Priya'], ['kookcap', 'Kook Capital'], ['larpwhale', 'Larp Whale'], ['gemhunter', 'Gem Hunter'], ['nightowl', 'Night Owl']];
+    const copyTrades = (() => {
+      const scripted = [[2, 'moonmaxi', 'DUCK'], [4, 'solsniper', 'LFROG'], [7, 'kookcap', 'DUCK'], [11, 'degenpriya', 'PANDA'], [14, 'larpwhale', 'LFROG'], [18, 'gemhunter', 'DUCK'],
+        [23, 'moonmaxi', 'HCAT'], [29, 'nightowl', 'PANDA'], [33, 'solsniper', 'DUCK'], [41, 'degenpriya', 'LFROG'], [52, 'kookcap', 'HCAT']];
+      const pool = ['OTTER', 'GLAPE', 'ZEBRA', 'NEWT', 'SIRP', 'GOOSE', 'SNAIL', 'RONIN', 'BYTE', 'CORGI'];
+      const out = scripted.map(([m, h, sy]) => ({ m, h, sy, side: 'buy' }));
+      for (let i = 0; i < 39; i++) {
+        const sy = pool[Math.floor(r3() * pool.length)];
+        out.push({ m: 60 + i * 8 + Math.floor(r3() * 6), h: TRADERS[Math.floor(r3() * TRADERS.length)][0], sy, side: r3() < 0.45 ? 'sell' : 'buy' });
+      }
+      // a coin only counts as hot from the scripted buys: random pool buys go to one trader per coin
+      const owner = {}; out.forEach((t) => { if (t.side === 'buy' && pool.includes(t.sy)) { owner[t.sy] = owner[t.sy] || t.h; t.h = owner[t.sy]; } });
+      return out.map((t, i) => { const c = ccoin(t.sy); return { id: 9000 - i, handle: t.h, ts: new Date(NOW - t.m * 60000).toISOString(), side: t.side, address: c.mint, chain: c.chain, symbol: c.symbol, name: c.name,
+        usd: Math.round((t.side === 'buy' ? 60 + r3() * 840 : 40 + r3() * 1200) * 100) / 100, mcap: c.marketCap * (0.7 + r3() * 0.6), coinUrl: DESKV[t.sy] ? fomoUrl(c) : '#/copy', desk: deskOf(t.sy) }; });
+    })();
+    function copyObj(state) {
+      state = ['no_token', 'no_traders', 'stale'].includes(state) ? state : 'running';
+      if (state === 'no_token') return { state, verified: false, lastPoll: null, traders: [], hot: [], trades: [] };
+      if (state === 'no_traders') return { state, verified: true, lastPoll: new Date(NOW - 40e3).toISOString(), traders: [], hot: [], trades: [] };
+      const trades = copyTrades.slice(0, 50);
+      const by = {};
+      trades.forEach((t) => { if (t.side !== 'buy') return; const b = by[t.address] = by[t.address] || { t, hs: [], usd: 0, last: 0 }; if (!b.hs.includes(t.handle)) b.hs.push(t.handle); b.usd += t.usd; b.last = Math.max(b.last, Date.parse(t.ts)); });
+      const hot = Object.values(by).filter((b) => b.hs.length >= 2).sort((a, b) => b.hs.length - a.hs.length || b.last - a.last)
+        .map((b) => ({ address: b.t.address, chain: b.t.chain, symbol: b.t.symbol, name: b.t.name, buyers: b.hs.length, handles: b.hs, usd: Math.round(b.usd * 100) / 100, lastTs: new Date(b.last).toISOString(), coinUrl: b.t.coinUrl, desk: b.t.desk }));
+      const traders = TRADERS.map(([h, name]) => { const mine = trades.filter((t) => t.handle === h); return { id: h, handle: h, name, trades24h: mine.length, lastTs: mine.length ? mine[0].ts : null, profileUrl: '#/copy' }; })
+        .sort((a, b) => b.trades24h - a.trades24h);
+      return { state, verified: true, lastPoll: new Date(NOW - (state === 'stale' ? 14 * 60e3 : 50e3)).toISOString(), traders, hot, trades };
+    }
+
+    const ADJ = ['Crispy', 'Lunar', 'Wobbly', 'Atomic', 'Sleepy', 'Golden', 'Feral', 'Cosmic', 'Soggy', 'Turbo', 'Velvet', 'Rusty', 'Hyper', 'Sneaky', 'Fuzzy', 'Mega'];
+    const ANI = [['Mole', 'MOLE'], ['Crab', 'CRAB'], ['Lemur', 'LEMUR'], ['Bison', 'BISON'], ['Gecko', 'GECKO'], ['Koala', 'KOALA'], ['Moth', 'MOTH'], ['Shrimp', 'SHRMP'], ['Llama', 'LLAMA'], ['Squid', 'SQUID'], ['Toad', 'TOAD'], ['Wasp', 'WASP'], ['Heron', 'HERON'], ['Tapir', 'TAPIR']];
+    const RSN = {
+      scanner: ['top 10 hold 61%', 'liq $8.2K', '1h +412%', 'mint authority live', 'pool 3 min old', 'freeze authority live'],
+      auditor: ['dev holds 31%', 'top 10 hold 44%', 'LP 12% locked', '14 bundled wallets', 'Safety Score 41', 'dev has 3 dead launches'],
+      analyst: ['chase 0.41', 'score 58', 'organic 0.42', 'score 61'],
+    };
+    const replayCache = {};
+    function replayObj(h, empty) {
+      h = clamp(Math.round(h), 6, 168);
+      if (empty) return { windowH: h, horizonH: 6, pending: 0, noData: 0, evaluated: 0, updatedAt: null, summary: { refused: 0, dodged: 0, missed: 0, dumped: 0, runners: 0, avgRefusedPct: null, signals: 0, signalAvgPct: null }, byStage: [], rows: [] };
+      if (replayCache[h]) return replayCache[h];
+      const r = rngOf(4000 + h);
+      const total = h === 24 ? 47 : Math.round(h * 1.75 + 8);
+      const known = [['DUCK', 'auditor', 'dev holds 31%'], ['GLAPE', 'auditor', 'top 10 hold 44%'], ['GOOSE', 'analyst', 'chase 0.41'], ['RONIN', 'auditor', 'Safety Score 41'],
+        ['LFROG', 'executor'], ['OTTER', 'executor'], ['SIRP', 'executor'], ['BYTE', 'executor']];
+      const all = []; const usedSym = {};
+      for (let i = 0; i < total; i++) {
+        let c, stage, reason;
+        if (i < known.length) { c = bySym[known[i][0]]; stage = known[i][1]; reason = known[i][2]; }
+        else {
+          const a = ANI[Math.floor(r() * ANI.length)], ad = ADJ[Math.floor(r() * ADJ.length)];
+          const chain = r() < 0.15 ? 'robinhood' : 'solana';
+          let sy = a[1]; if (usedSym[sy]) sy = (ad.charAt(0) + a[1]).slice(0, 5); if (usedSym[sy]) sy = (ad.slice(0, 2).toUpperCase() + a[1]).slice(0, 5); usedSym[sy] = 1;
+          c = { name: ad + ' ' + a[0], symbol: sy, chain, mint: chain === 'robinhood' ? '0x' + Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(r() * 16)]).join('') : b58(r, 43) + 'p' };
+          if (!coins[c.mint]) { Object.assign(c, { image: null, price: Math.pow(10, -3 - r() * 3), ageH: 1 + r() * 20, marketCap: 1e5 + r() * 2e6, liquidity: 2e4 + r() * 2e5, volume24h: 5e4 + r() * 2e6, holders: Math.floor(200 + r() * 3000) }); coins[c.mint] = c; }
+          const x = r(); stage = i < known.length + Math.round(total * 0.06) ? 'executor' : x < 0.5 ? 'scanner' : x < 0.8 ? 'auditor' : 'analyst';
+          reason = stage === 'executor' ? null : RSN[stage][Math.floor(r() * RSN[stage].length)];
+        }
+        // price path after the decision and the Risk replay (stop -6%, trail 12% from +20%, timeout 3h, ~1.2% fees)
+        const kind = r(); let maxPct, minPct, endPct, simPct, simExit;
+        const ex = stage === 'executor';
+        if (kind < (ex ? 0.3 : 0.64)) { maxPct = 1 + r() * 14; minPct = -(55 + r() * 42); endPct = minPct * (0.85 + r() * 0.15); simPct = -7.2 + (r() - 0.5) * 0.8; simExit = 'stop'; }
+        else if (kind < (ex ? 0.55 : 0.91)) { maxPct = 2 + r() * 12; minPct = -(2 + r() * 3.5); endPct = -15 + r() * 18; simPct = -5 + r() * 7.5; simExit = 'timeout'; }
+        else { maxPct = 30 + Math.pow(r(), 1.6) * (ex ? 300 : 170); minPct = -(r() * 4); endPct = maxPct * (0.2 + r() * 0.6); simPct = ((1 + maxPct / 100) * 0.88 - 1) * 100 - 1.2; simExit = maxPct < 20 ? 'timeout' : 'trail'; }
+        const outcome = stage === 'executor' ? (simPct >= 0 ? 'win' : 'loss') : (simPct < 0 ? 'dodged' : 'missed');
+        const decidedAt = new Date(NOW - (6 + r() * (h - 6)) * 3600e3).toISOString();
+        all.push({ mint: c.mint, chain: c.chain, symbol: c.symbol, name: c.name, image: null, stage, reason, decidedAt, maxPct: +maxPct.toFixed(1), minPct: +minPct.toFixed(1), endPct: +endPct.toFixed(1), simPct: +simPct.toFixed(1), simExit, outcome, coinUrl: fomoUrl(c) });
+      }
+      const refused = all.filter((x) => x.stage !== 'executor'), sig = all.filter((x) => x.stage === 'executor');
+      const avg = (a) => (a.length ? +(a.reduce((t, x) => t + x.simPct, 0) / a.length).toFixed(1) : null);
+      const summary = { refused: refused.length, dodged: refused.filter((x) => x.outcome === 'dodged').length, missed: refused.filter((x) => x.outcome === 'missed').length,
+        dumped: all.filter((x) => x.endPct <= -50).length, runners: all.filter((x) => x.maxPct >= 100).length, avgRefusedPct: avg(refused), signals: sig.length, signalAvgPct: avg(sig) };
+      const byStage = ['scanner', 'auditor', 'analyst', 'executor'].map((st) => { const a = all.filter((x) => x.stage === st); return { stage: st, n: a.length, dodged: a.filter((x) => x.outcome === 'dodged').length, avgPct: avg(a) }; });
+      const rows = all.slice().sort((a, b) => Math.abs(b.simPct) - Math.abs(a.simPct)).slice(0, 60);
+      return (replayCache[h] = { windowH: h, horizonH: 6, pending: Math.round(h / 4) + 1, noData: Math.round(h / 10) + 1, evaluated: all.length, updatedAt: new Date(NOW - 4 * 60e3).toISOString(), summary, byStage, rows });
+    }
+
+    async function nightPostObj(preview, none) {
+      if (none) return { date: null, text: null, cardUrl: null };
+      const d = new Date(NOW);
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      let cardUrl = null;
+      try { if (window.Share) { const cv = await window.Share.render('night', await window.Share.data.night(), 'land'); cardUrl = cv.toDataURL('image/png'); } } catch (e) { cardUrl = null; }
+      const rp = replayObj(24).summary;
+      const bal = st.balance;
+      const ch = (bal / NIGHT - 1) * 100;
+      const text = (preview ? 'GROKHOOD Desk · tonight so far (PAPER)\n\n' : 'GROKHOOD Desk · last night (PAPER)\n\n')
+        + `${usd(NIGHT)} to ${usd(bal)}, ${pct(ch)} on the night\n`
+        + '3 wins, 1 loss. Best: $LFROG +80.8% on a trailing stop\n\n'
+        + `The Auditor took apart ${intf(st.counts.auditor)} coins.\nReplayed 6h later: the desk said no to ${rp.refused}, and ${rp.dodged} of them would have lost money.\n\n`
+        + 'Every buy is a tap on FOMO. The desk never trades for you.';
+      return { date, text, cardUrl };
     }
     return { api: apiDemo, stream: streamDemo, coins, bySym };
   })() : null;

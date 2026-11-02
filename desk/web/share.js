@@ -1,8 +1,8 @@
 /* GROKHOOD Desk: share cards for X. Drawn on <canvas>, no libraries.
-   Three cards (trade, night, audit), each in 1200x675 (post) and 1080x1350 (portrait).
+   Four cards (trade, night, audit, replay), each in 1200x675 (post) and 1080x1350 (portrait).
    Only data the app already reads from /api (shapes in docs/ARCHITECTURE.md). Missing data is left out,
    never filled in. Shared as a PNG File via navigator.share, else downloaded.
-   Debug (demo only): ?demo=1&card=trade|night|audit[&layout=portrait][&sym=LFROG] draws the card full page. */
+   Debug (demo only): ?demo=1&card=trade|night|audit|replay[&layout=portrait][&sym=LFROG][&h=24] draws the card full page. */
 (function () {
   'use strict';
 
@@ -12,6 +12,7 @@
   const EXIT = ['sold', 'stopped', 'timeout'];
   const PALETTE = ['#ffd60a', '#64d2ff', '#ff9f0a', '#30d158', '#bf5af2', '#ff6b9a', '#5e5ce6', '#66d4cf', '#ff453a', '#ac8e68'];
   const CHAIN = { solana: 'Solana', robinhood: 'Robinhood Chain' };
+  const AGC = { scanner: ['Scanner', '#64d2ff'], auditor: ['Auditor', '#0a84ff'], analyst: ['Analyst', '#ffd60a'], executor: ['Executor', '#00d35a'] };
 
   let A = null; // { api, S, DEMO, toast }
 
@@ -485,6 +486,92 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     return out;
   }
 
+  /* ================= REPLAY card ================= */
+  function windowLabel(h) { h = num(h) || 24; return h % 24 === 0 && h > 24 ? `LAST ${h / 24} DAYS` : `LAST ${h}H`; }
+  async function drawReplay(c, W, H, d) {
+    const port = H > W, P = port ? 64 : 56, theme = 'dark';
+    background(c, W, H, theme);
+    const s = d.summary || {};
+    const tw0 = txt(c, 'REPLAY · ' + windowLabel(d.windowH), P, P + 22, { size: port ? 24 : 21, w: 900, color: LIME, track: 3 });
+    if (d.mode) modeTag(c, P + tw0 + 22, P - 6, theme, d.mode, port ? 20 : 18);
+    await wordmark(c, W - P, P + 26, theme, port ? 30 : 26, 'right');
+
+    // hero: dodged coins, big lime
+    const bigY = port ? 330 : 286;
+    const big = num(s.dodged) == null ? 'n/a' : String(s.dodged);
+    c.save(); c.shadowColor = 'rgba(205,255,0,0.5)'; c.shadowBlur = 50;
+    const bw = txt(c, big, P - 8, bigY, { size: port ? 270 : 220, w: 900, color: LIME, track: -8, max: port ? 600 : 420 });
+    c.restore();
+    const lx = P + bw + (port ? 22 : 18);
+    txt(c, 'coins', lx, bigY - (port ? 92 : 76), { size: port ? 60 : 50, w: 900, color: WHITE, track: -1 });
+    const dw = txt(c, 'dodged', lx, bigY - (port ? 18 : 12), { size: port ? 60 : 50, w: 900, color: WHITE, track: -1 });
+
+    // sentence
+    const sy = bigY + (port ? 80 : 68);
+    const l1 = num(s.refused) != null ? `Desk said no to ${s.refused} coin${s.refused === 1 ? '' : 's'}.` : 'Desk said no to n/a coins.';
+    const l2 = num(s.dodged) != null ? `${s.dodged} would have lost money.` : null;
+    txt(c, l1, P, sy, { size: port ? 44 : 34, w: 900, color: WHITE, max: port ? W - P * 2 : 600, track: -0.5 });
+    if (l2) txt(c, l2, P, sy + (port ? 56 : 44), { size: port ? 44 : 34, w: 900, color: 'rgba(235,235,245,0.6)', max: port ? W - P * 2 : 600, track: -0.5 });
+
+    // stat pills
+    let px = P; const py = sy + (port ? 96 : 82), ph = port ? 70 : 58, ps = port ? 30 : 25;
+    if (num(s.dumped) != null) px += pill(c, `${s.dumped} dumped 50%+`, px, py, { size: ps, w: 900, h: ph, bg: 'rgba(255,69,58,0.18)', fg: '#ff6961', icon: ICON.down }) + 12;
+    if (num(s.avgRefusedPct) != null) px += pill(c, `avg ${pct(s.avgRefusedPct, 1)} if bought`, px, py, { size: ps, w: 900, h: ph, stroke: LIME, lw: 3, fg: LIME }) + 12;
+    if (port && num(s.missed) != null) pill(c, `${s.missed} missed`, px, py, { size: ps, w: 900, h: ph, bg: 'rgba(235,235,245,0.12)', fg: 'rgba(235,235,245,0.8)' });
+
+    // stage panel
+    const sp = port ? { x: P, y: 680, w: W - P * 2, h: 380 } : { x: 720, y: 112, w: W - 720 - P, h: 310 };
+    c.save(); c.shadowColor = 'rgba(0,0,0,0.4)'; c.shadowBlur = 30; c.shadowOffsetY = 10;
+    rr(c, sp.x, sp.y, sp.w, sp.h, 30); c.fillStyle = 'rgba(28,28,30,0.92)'; c.fill(); c.restore();
+    rr(c, sp.x, sp.y, sp.w, sp.h, 30); c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,0.08)'; c.stroke();
+    txt(c, 'WHERE THE DESK SAID NO', sp.x + 28, sp.y + (port ? 50 : 42), { size: port ? 21 : 17, w: 800, color: 'rgba(235,235,245,0.5)', track: 2 });
+    const stages = (d.byStage || []).filter((x) => AGC[x.stage] && x.stage !== 'executor');
+    const max = Math.max(1, ...stages.map((x) => num(x.n) || 0));
+    const top = sp.y + (port ? 100 : 84), rowH = port ? 88 : 70;
+    const labW = port ? 170 : 128, numW = port ? 170 : 116;
+    const bx = sp.x + 28 + labW, bwid = sp.w - 56 - labW - numW;
+    stages.forEach((x, i) => {
+      const [label, col] = AGC[x.stage];
+      const y = top + i * rowH, n = num(x.n) || 0, dg = num(x.dodged) || 0;
+      c.beginPath(); c.arc(sp.x + 36, y + 2, port ? 9 : 7, 0, Math.PI * 2); c.fillStyle = col; c.fill();
+      txt(c, label, sp.x + 54, y + (port ? 12 : 10), { size: port ? 30 : 24, w: 800, color: WHITE });
+      const bh = port ? 22 : 18;
+      rr(c, bx, y - bh / 2 + 2, bwid, bh, bh / 2); c.fillStyle = 'rgba(255,255,255,0.07)'; c.fill();
+      const w1 = Math.max(bh, (n / max) * bwid);
+      if (n) { rr(c, bx, y - bh / 2 + 2, w1, bh, bh / 2); c.fillStyle = col + '55'; c.fill(); }
+      if (dg) { c.save(); c.shadowColor = col; c.shadowBlur = 16; rr(c, bx, y - bh / 2 + 2, Math.max(bh, w1 * (dg / Math.max(1, n))), bh, bh / 2); c.fillStyle = col; c.fill(); c.restore(); }
+      const nt = `${dg}/${n}`;
+      txt(c, nt, sp.x + sp.w - 28, y + (port ? 12 : 10), { size: port ? 34 : 27, w: 900, color: WHITE, align: 'right' });
+    });
+    if (!stages.length) txt(c, 'No refusals in this window', sp.x + 28, top + 20, { size: 24, w: 700, color: 'rgba(235,235,245,0.55)' });
+    txt(c, 'bright part = dodged', sp.x + 28, sp.y + sp.h - (port ? 30 : 24), { size: port ? 20 : 16, w: 700, color: 'rgba(235,235,245,0.4)' });
+
+    // biggest dump dodged
+    if (d.dump) {
+      const t = port ? { x: P, y: 1090, w: W - P * 2, h: 124 } : { x: 720, y: 440, w: W - 720 - P, h: 116 };
+      rr(c, t.x, t.y, t.w, t.h, 26); c.fillStyle = 'rgba(28,28,30,0.86)'; c.fill(); c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,0.08)'; c.stroke();
+      txt(c, port ? 'BIGGEST DUMP DODGED' : 'BIGGEST DODGE', t.x + 26, t.y + (port ? 38 : 34), { size: port ? 19 : 16, w: 800, color: 'rgba(235,235,245,0.5)', track: 2 });
+      const av = port ? 50 : 42;
+      await avatar(c, d.dump, t.x + 26, t.y + t.h - av - (port ? 18 : 16), av, 'dark');
+      const yb = t.y + t.h - (port ? 30 : 26);
+      const lbl = AGC[d.dump.stage] ? AGC[d.dump.stage][0] : '';
+      txt(c, '$' + sym(d.dump), t.x + 26 + av + 14, yb, { size: port ? 32 : 27, w: 900, color: WHITE, max: t.w - av - 300 });
+      txt(c, pct(d.dump.endPct, 0) || 'n/a', t.x + t.w - 26, yb, { size: port ? 44 : 38, w: 900, color: RED, align: 'right' });
+      if (lbl) txt(c, 'refused by ' + lbl, t.x + t.w - 26, t.y + (port ? 38 : 34), { size: port ? 19 : 16, w: 700, color: AGC[d.dump.stage][1], align: 'right' });
+    }
+    // footnote + mascot
+    const fn = `Each refusal replayed ${num(d.horizonH) != null ? d.horizonH + 'h' : ''} with the desk's own stop, trail and fees`.replace('  ', ' ');
+    txt(c, fn, P, H - (port ? 56 : 40), { size: port ? 22 : 17, w: 700, color: 'rgba(235,235,245,0.45)', max: port ? W - P * 2 - 220 : 620 });
+    const m = await mascot({ ring: false, body: LIME, ink: INK, hat: WHITE, fuse: LIME, spark: LIME });
+    if (m) {
+      const ms = port ? 230 : 150;
+      let mx = port ? W - P - ms + 10 : 560, my = port ? 150 : bigY - 214;
+      if (lx + dw + 20 > mx) { mx = port ? W - P - ms * 0.8 : W - ms - 10; my = port ? H - ms * 0.86 : H - ms - 6; }
+      c.save(); c.translate(mx, my); c.rotate(port ? -0.1 : 0.08);
+      c.shadowColor = 'rgba(205,255,0,0.55)'; c.shadowBlur = 36; c.drawImage(m, 0, 0, ms, ms); c.restore();
+    }
+  }
+
   /* ================= data (only what /api already returns) ================= */
   function modeLabel(st) { if (A && A.DEMO) return 'DEMO'; return st && st.mode === 'PAPER' ? 'PAPER' : null; }
   async function getState() { return (A.S && A.S.state) || A.api('/api/state').catch(() => null); }
@@ -574,9 +661,18 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
       ok: layers.filter((l) => l.pass === true).length, total: layers.length, mode: modeLabel(st) };
   }
 
+  async function replayData(arg) {
+    const h = num(arg && arg.h) || 24;
+    const [r, st] = await Promise.all([A.api('/api/replay?h=' + h), getState()]);
+    if (!r || !r.summary) throw new Error('No replay yet');
+    let dump = null;
+    for (const x of r.rows || []) if (x.outcome === 'dodged' && num(x.endPct) != null && (!dump || x.endPct < dump.endPct)) dump = x;
+    return { windowH: r.windowH || h, horizonH: r.horizonH, summary: r.summary, byStage: r.byStage || [], dump, mode: modeLabel(st) };
+  }
+
   /* ================= render + share ================= */
-  const DRAW = { trade: drawTrade, night: drawNight, audit: drawAudit };
-  const DATA = { trade: tradeData, night: () => nightData(), audit: auditData };
+  const DRAW = { trade: drawTrade, night: drawNight, audit: drawAudit, replay: drawReplay };
+  const DATA = { trade: tradeData, night: () => nightData(), audit: auditData, replay: replayData };
   async function render(kind, data, layout) {
     const [W, H] = SIZES[layout];
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
@@ -586,7 +682,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
   }
   const toBlob = (cv) => new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
   function fileName(kind, data, layout) {
-    const s = (data.coin && sym(data.coin)) || 'night';
+    const s = (data.coin && sym(data.coin)) || (kind === 'replay' ? (data.windowH || 24) + 'h' : 'night');
     return `grokhood-desk-${kind}-${s.toLowerCase().replace(/[^a-z0-9]+/g, '')}${layout === 'port' ? '-portrait' : ''}.png`;
   }
   async function shareFile(file) {
@@ -625,7 +721,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     style();
     const root = document.getElementById('sheet-root');
     root.innerHTML = `<div class="sheet-bg"></div><div class="sheet"><div class="grabber"></div>
-      <h2>${{ trade: 'Share trade', night: 'Share tonight', audit: 'Share audit' }[kind]}</h2>
+      <h2>${{ trade: 'Share trade', night: 'Share tonight', audit: 'Share audit', replay: 'Share replay' }[kind]}</h2>
       <div class="shs-seg"><button data-l="land" class="on">Post 16:9</button><button data-l="port">Portrait 4:5</button></div>
       <div class="shs-img"><div class="shs-msg">Drawing the card...</div></div>
       <button class="cta shs-btn go" data-go disabled style="opacity:.4">Share</button><button class="cta ghost shs-btn" data-no>Cancel</button></div>`;
@@ -681,7 +777,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     document.addEventListener('click', (e) => { if (fired && rowOf(e)) { e.preventDefault(); e.stopPropagation(); fired = false; } }, true);
   }
 
-  // demo only: ?demo=1&card=trade|night|audit[&layout=portrait][&sym=X] draws the card full page for screenshots
+  // demo only: ?demo=1&card=trade|night|audit|replay[&layout=portrait][&sym=X][&h=24] draws the card full page for screenshots
   async function debugCard() {
     const qs = new URLSearchParams(location.search);
     const kind = qs.get('card');
@@ -692,7 +788,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     const s = qs.get('sym') || (kind === 'audit' ? 'DUCK' : kind === 'trade' ? 'LFROG' : null);
     const coin = s && A.coins ? A.coins(s) : null;
     try {
-      const data = await DATA[kind](coin ? { mint: coin.mint } : {});
+      const data = await DATA[kind](coin ? { mint: coin.mint } : kind === 'replay' ? { h: +qs.get('h') || 24 } : {});
       const cv = await render(kind, data, layout);
       cv.className = 'card-full'; cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
       document.body.appendChild(cv);
