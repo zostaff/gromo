@@ -10,6 +10,8 @@
   const qs = new URLSearchParams(location.search);
   const DEMO = qs.get('demo') === '1';
   const DEMO_STATE = DEMO ? qs.get('state') : null; // loading | empty | error (design only)
+  const STORY = DEMO && qs.get('story') === '1'; // demo video: one scripted PAPER night from a $120 stack
+  const SHOW = DEMO && (qs.get('show') === '1' || STORY); // demo video: the recorder drives a fast scripted session through window.__show
   const TOKEN_KEY = 'desk.token';
   (function takeToken() {
     const m = location.hash.match(/(?:^#|&)t=([^&]+)/);
@@ -945,7 +947,7 @@
     let pending = false;
     page.onEvent = (t, d) => {
       if ((t === 'price' || t === 'exit' || t === 'fill') && d && d.mint === mint && !pending) {
-        pending = true; setTimeout(async () => { pending = false; try { S.coin[mint] = await api('/api/coin/' + encodeURIComponent(mint)); const y = root.scrollTop; paint(); root.scrollTop = y; } catch (e) { /* keep last */ } }, 1500);
+        pending = true; setTimeout(async () => { pending = false; try { S.coin[mint] = await api('/api/coin/' + encodeURIComponent(mint)); const y = root.scrollTop; paint(); root.scrollTop = y; } catch (e) { /* keep last */ } }, SHOW ? 60 : 1500);
       }
     };
     page.destroy = () => { if (candles) candles.destroy(); clearInterval(timer); };
@@ -1362,8 +1364,8 @@
     bySym.GOOSE.holders = null;
     const NOW = Date.now();
     const T0 = NOW - 330 * 60000;
-    const START_ALL = 1000;
-    const NIGHT = 1113.2;
+    const START_ALL = STORY ? 120 : 1000;
+    const NIGHT = STORY ? 120 : 1113.2;
     const stackPct = 8;
     // scripted night
     const plan = [
@@ -1403,10 +1405,44 @@
       const k = ['bought', 'sold', 'rejected', 'stopped', 'sold'][i % 5]; const pnl = k === 'sold' ? 5 + rnd() * 60 : -(2 + rnd() * 6);
       acts.push({ id: id++, ts, kind: k, title: { bought: 'Bought ', sold: 'Sold ', rejected: 'Rejected ', stopped: 'Stopped ' }[k] + c.symbol, subtitle: { bought: 'Executor', sold: 'Risk · trailing stop', rejected: 'Auditor · mint authority live', stopped: 'Risk · -6% stop' }[k], value: k === 'bought' ? usd(70 + rnd() * 20) : k === 'rejected' ? 'Skipped' : usd(pnl, { sign: true }), value2: k === 'bought' ? '8% of stack' : k === 'rejected' ? '' : pct(pnl / 0.85, 1), mint: c.mint, chain: c.chain, image: null });
     }
+    // ---- demo video (?demo=1&story=1): one scripted PAPER night, $120 to $1,737.60. Fixture only, DEMO pill stays ----
+    if (STORY) {
+      const ST = [ // minutes after 11:45 PM, kind, symbol, pct, stack after
+        [13, 'rej', 'DUCK', 'Auditor · LP not burned'], [36, 'rej', 'GLAPE', 'Auditor · dev holds 31%'],
+        [53, 'win', 'LFROG', 52.4, 183.00], [87, 'win', 'OTTER', 61.0, 301.40], [121, 'win', 'SIRP', 44.7, 519.00],
+        [139, 'stop', 'GOOSE', -6.0, 461.00], [152, 'stop', 'BYTE', -6.0, 404.00], [166, 'stop', 'PUG', -6.0, 347.00],
+        [170, 'rej', 'RONIN', 'Auditor · Safety Score 41'], [190, 'buy', 'HCAT'], [236, 'win', 'HCAT', 316.4, 1051.16],
+        [260, 'stop', 'GLAPE', -6.0, 990.10], [303, 'win', 'CORGI', 38.2, 1231.40], [351, 'win', 'NEWT', 21.6, 1350.30],
+        [397, 'win', 'QUOK', 47.9, 1662.50], [432, 'win', 'YAK', 18.4, 1737.60],
+      ];
+      const S0 = NOW - 467 * 60000; const at = (m) => S0 + m * 60000;
+      series.length = 0; marks.length = 0; acts.length = 0;
+      let prev = 120, mi = 0; const steps = ST.filter((e) => e.length === 5);
+      for (let m = 0; m <= 467; m++) {
+        const nx = steps.find((e) => e[0] >= m); const pv = steps.filter((e) => e[0] < m).pop();
+        const from = pv ? pv[4] : 120, fromM = pv ? pv[0] : 0;
+        let v = from;
+        if (nx) { const k = (m - fromM) / Math.max(1, nx[0] - fromM); const lead = nx[3] > 0 ? Math.pow(k, 1.8) : k > 0.75 ? (k - 0.75) * 4 : -0.15 * Math.sin(k * 3); v = from + (nx[4] - from) * Math.max(-0.2, Math.min(1, lead)); }
+        series.push([at(m), +(v + (m && m < 467 ? (rnd() - 0.5) * v * 0.006 : 0)).toFixed(2)]);
+      }
+      series[series.length - 1][1] = 1737.6;
+      for (const e of ST) {
+        const c = bySym[e[2]]; const ts = new Date(at(e[0])).toISOString();
+        if (e[1] === 'rej') acts.push({ id: id++, ts, kind: 'rejected', title: 'Rejected ' + e[2], subtitle: e[3], value: 'Skipped', value2: '', mint: c.mint, chain: c.chain, image: null });
+        else if (e[1] === 'buy') acts.push({ id: id++, ts, kind: 'bought', title: 'Bought ' + e[2], subtitle: 'Executor · 33 min old · $214K', value: usd(222.55), value2: '', mint: c.mint, chain: c.chain, image: null });
+        else {
+          const i = steps.indexOf(e); const pnl = +(e[4] - (i ? steps[i - 1][4] : 120)).toFixed(2);
+          if (e[1] === 'win' && pnl > 100) marks.push({ ts, kind: 'win', label: usd(pnl, { sign: true }), mint: c.mint });
+          if (e[0] === 166) marks.push({ ts, kind: 'loss', label: '3 stops · ' + usd(347), mint: c.mint });
+          acts.push({ id: id++, ts, kind: e[1] === 'win' ? 'sold' : 'stopped', title: (e[1] === 'win' ? 'Sold ' : 'Stopped ') + e[2], subtitle: e[1] === 'win' ? 'Risk · trailing stop' : 'Risk · -6% stop', value: usd(pnl, { sign: true }), value2: pct(e[3], 1), mint: c.mint, chain: c.chain, image: null });
+        }
+      }
+      acts.reverse();
+    }
     const hc = bySym.HCAT; const hpos = open.HCAT;
     const st = {
       balance: series[series.length - 1][1], nightStart: NIGHT, start: START_ALL, mode: 'PAPER', unread: 2, handle: 'zostaff',
-      counts: { scanner: 1284, auditor: 312, analyst: 57, executor: 6, risk: 5 },
+      counts: STORY ? { scanner: 53, auditor: 53, analyst: 12, executor: 12, risk: 12 } : { scanner: 1284, auditor: 312, analyst: 57, executor: 6, risk: 5 },
     };
     function stateObj() {
       const bal = st.balance;
@@ -1461,9 +1497,11 @@
     }
     function coinObj(mint) {
       const c = coins[mint]; if (!c) return null;
+      const sp = showPos[c.symbol] || showClosed[c.symbol];
+      if (sp) return showCoinObj(c, sp, !showPos[c.symbol]);
       const isOpen = c.symbol === 'HCAT';
       const pp = isOpen ? paths.HCAT : null;
-      const { candles, entry } = candlesFor(c, 0, pp);
+      const { candles, entry } = SHOW && !isOpen ? (showBase[c.mint] = showBase[c.mint] || candlesFor(c, 0, null)) : candlesFor(c, 0, pp);
       c.price = candles[candles.length - 1][4];
       const a = auditFor(c);
       const shield = `${a.layers.filter((l) => l.pass === true).length}/${a.layers.length}`;
@@ -1547,10 +1585,10 @@
     }
     function streamDemo(emit) {
       // balance ticks
-      setInterval(() => { st.balance = +(st.balance + (rnd() - 0.42) * 0.9).toFixed(2); series.push([Date.now(), st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: Date.now() }); }, 2600);
+      if (!SHOW) setInterval(() => { st.balance = +(st.balance + (rnd() - 0.42) * 0.9).toFixed(2); series.push([Date.now(), st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: Date.now() }); }, 2600);
       // scanner feed
       const keys = Object.keys(coins); let si = 3;
-      setInterval(() => { const c = coins[keys[si++ % keys.length]]; const pass = rnd() < 0.3; st.counts.scanner++; feed.unshift({ name: c.name, symbol: c.symbol, mint: c.mint, chain: c.chain, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liq: c.liquidity }); feed = feed.slice(0, 6); emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liquidityUsd: c.liquidity }); }, 3200);
+      if (!STORY) setInterval(() => { const c = coins[keys[si++ % keys.length]]; const pass = rnd() < 0.3; st.counts.scanner++; feed.unshift({ name: c.name, symbol: c.symbol, mint: c.mint, chain: c.chain, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liq: c.liquidity }); feed = feed.slice(0, 6); emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[si % 6], liquidityUsd: c.liquidity }); }, SHOW ? 700 : 3200);
       // auditor: finish NEWT live, then loop on new coins
       let ai = 0;
       const runAudit = (c, from) => {
@@ -1558,16 +1596,71 @@
         auditCur = { mint: c.mint, name: c.name, layers: a.layers.slice(0, from - 1).map((l) => ({ n: l.n, pass: l.pass })) };
         let n = from;
         const tick = () => {
-          if (n > NL) { auditLast = a.passed ? NL + '/' + NL + ' → Executor' : a.reason; st.counts.auditor++; emit('audit', a); setTimeout(() => runAudit(coins[keys[(7 + ai++) % keys.length]], 1), 5000); return; }
-          const l = a.layers[n - 1]; auditCur.layers.push({ n: l.n, pass: l.pass }); emit('audit_layer', { mint: c.mint, n: l.n, name: l.name, pass: l.pass, value: l.value }); n++; setTimeout(tick, 700);
+          if (n > NL) { auditLast = a.passed ? NL + '/' + NL + ' → Executor' : a.reason; st.counts.auditor++; emit('audit', a); if (!SHOW) setTimeout(() => runAudit(coins[keys[(7 + ai++) % keys.length]], 1), 5000); return; }
+          const l = a.layers[n - 1]; auditCur.layers.push({ n: l.n, pass: l.pass }); emit('audit_layer', { mint: c.mint, n: l.n, name: l.name, pass: l.pass, value: l.value }); n++; setTimeout(tick, SHOW ? 330 : 700);
         };
-        setTimeout(tick, 900);
+        setTimeout(tick, SHOW ? 200 : 900);
       };
-      runAudit(NEWT, 6);
+      if (!SHOW) runAudit(NEWT, 6);
+      if (SHOW) window.__show = showApi(emit, runAudit);
       // executor progress
-      setInterval(() => { if (exec.state === 'executing') { exec.progress = Math.min(100, exec.progress + 7); if (exec.progress >= 100) { exec.state = 'filled'; emit('fill', { mint: hc.mint, name: hc.symbol, state: 'filled', progress: 100 }); setTimeout(() => { exec.state = 'executing'; exec.progress = 8; }, 6000); } else emit('signal', { mint: hc.mint, name: hc.symbol, state: 'executing', progress: exec.progress }); } }, 900);
+      if (!SHOW) setInterval(() => { if (exec.state === 'executing') { exec.progress = Math.min(100, exec.progress + 7); if (exec.progress >= 100) { exec.state = 'filled'; emit('fill', { mint: hc.mint, name: hc.symbol, state: 'filled', progress: 100 }); setTimeout(() => { exec.state = 'executing'; exec.progress = 8; }, 6000); } else emit('signal', { mint: hc.mint, name: hc.symbol, state: 'executing', progress: exec.progress }); } }, 900);
       // analyst
-      setInterval(() => { const c = coins[keys[Math.floor(rnd() * keys.length)]]; const sc = Math.floor(48 + rnd() * 46); scoring = { mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }); }, 7000);
+      if (!SHOW) setInterval(() => { const c = coins[keys[Math.floor(rnd() * keys.length)]]; const sc = Math.floor(48 + rnd() * 46); scoring = { mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score: sc, passed: sc >= 70 }); }, 7000);
+    }
+    // ---- demo video (?demo=1&show=1): a fast scripted session the recorder drives. Same DEMO pill, nothing touches the backend ----
+    const showPos = {}; const showClosed = {}; const showBase = {};
+    let showCash = null; // balance without open show positions
+    function showCoinObj(c, sp, closed) {
+      const base = showBase[c.mint] = showBase[c.mint] || candlesFor(c, 0, null);
+      const candles = base.candles.slice(sp.candles.length + 60).concat(sp.candles);
+      c.price = candles[candles.length - 1][4];
+      const peakP = sp.entry * (1 + sp.peak / 100);
+      const trailOn = sp.peak >= 20; const trail = peakP * 0.88;
+      const position = { sizeUsd: sp.size, entryPrice: sp.entry, stopPrice: sp.entry * 0.94, trailPrice: trailOn ? trail : null, trailActive: trailOn, timeoutAt: new Date(sp.t0 + 3 * 3600e3).toISOString(), pnlUsd: sp.size * sp.pct / 100, pnlPct: sp.pct, mode: 'PAPER' };
+      return { mint: c.mint, chain: c.chain, name: c.name, symbol: c.symbol, image: null, ageH: c.ageH, price: c.price, sinceEntryPct: closed ? null : sp.pct, shield: NL + '/' + NL, marketCap: c.marketCap * (1 + sp.pct / 100), liquidity: c.liquidity, volume24h: c.volume24h, holders: c.holders, candles, position: closed ? null : position, exitLine: closed ? null : trailOn ? trail : sp.entry * 0.94, coinUrl: fomoUrl(c), grokhoodUrl: null, safetyScore: c.safetyScore || null };
+    }
+    function showApi(emit, runAudit) {
+      const unreal = () => Object.values(showPos).reduce((t, p) => t + p.size * p.pct / 100, 0);
+      let simT = null; // session clock: each tick is ~80s of night, so the chart draws a slope, not a wall
+      const pushBal = () => { st.balance = +(showCash + unreal()).toFixed(2); simT = (simT || series[series.length - 1][0]) + 80000; series.push([simT, st.balance]); emit('balance', { balance: st.balance, todayPct: (st.balance / NIGHT - 1) * 100, multiplier: st.balance / START_ALL, ts: simT }); };
+      const act = (row) => { const r = Object.assign({ id: id++, ts: new Date().toISOString(), image: null }, row); acts.unshift(r); emit('activity', r); };
+      return {
+        scan: (sym, pass, reason) => { const c = bySym[sym]; emit('scan', { agent: 'scanner', chain: c.chain, mint: c.mint, name: c.name, symbol: c.symbol, verdict: pass ? 'pass' : 'kill', reason: reason || null, liquidityUsd: c.liquidity }); },
+        audit: (sym) => runAudit(bySym[sym], 1),
+        verdict: (sym, score) => { const c = bySym[sym]; scoring = { mint: c.mint, name: c.name, score, passed: score >= 70 }; st.counts.analyst++; emit('verdict', { agent: 'analyst', mint: c.mint, name: c.name, score, passed: score >= 70 }); },
+        mint: (sym) => bySym[sym].mint,
+        buy: (sym) => {
+          if (showCash == null) showCash = st.balance;
+          const c = bySym[sym]; const base = showBase[c.mint] = showBase[c.mint] || candlesFor(c, 0, null);
+          const entry = base.candles[base.candles.length - 1][4];
+          const size = +(st.balance * stackPct / 100).toFixed(2);
+          showPos[sym] = { size, entry, pct: 0, peak: 0, candles: [], t0: Date.now() };
+          st.counts.executor++; exec = { lastSize: size, state: 'filled', progress: 100, name: sym };
+          marks.push({ ts: new Date().toISOString(), kind: 'buy', label: 'Bought ' + sym, mint: c.mint });
+          act({ kind: 'bought', title: 'Bought ' + sym, subtitle: 'Executor', value: usd(size), value2: stackPct + '% of stack', mint: c.mint, chain: c.chain });
+          emit('fill', { mint: c.mint, name: sym, state: 'filled', progress: 100, sizeUsd: size });
+          return size;
+        },
+        tick: (sym, pct) => {
+          const sp = showPos[sym]; if (!sp) return; const c = bySym[sym];
+          const prev = sp.candles.length ? sp.candles[sp.candles.length - 1][4] : sp.entry;
+          const cl = sp.entry * (1 + pct / 100); const o = prev;
+          sp.candles.push([Date.now(), o, Math.max(o, cl) * (1 + rnd() * 0.012), Math.min(o, cl) * (1 - rnd() * 0.012), cl, Math.floor(20000 + rnd() * 60000)]);
+          sp.pct = pct; sp.peak = Math.max(sp.peak, pct);
+          emit('price', { mint: c.mint, price: cl }); pushBal();
+        },
+        sell: (sym, how) => {
+          const sp = showPos[sym]; if (!sp) return; const c = bySym[sym];
+          const pnl = +(sp.size * sp.pct / 100).toFixed(2); showCash += pnl; showClosed[sym] = sp; delete showPos[sym];
+          st.counts.risk = (st.counts.risk || 0) + 1;
+          marks.push({ ts: new Date().toISOString(), kind: pnl >= 0 ? 'win' : 'loss', label: usd(pnl, { sign: true }), mint: c.mint });
+          act({ kind: pnl >= 0 ? 'sold' : 'stopped', title: (pnl >= 0 ? 'Sold ' : 'Stopped ') + sym, subtitle: how || (pnl >= 0 ? 'Risk · trailing stop' : 'Risk · -6% stop'), value: usd(pnl, { sign: true }), value2: pct(sp.pct, 1), mint: c.mint, chain: c.chain });
+          pushBal(); emit('exit', { mint: c.mint, name: sym, pnlUsd: pnl });
+          return { pnl, pct: sp.pct, size: sp.size };
+        },
+        state: () => ({ balance: st.balance, night: NIGHT }),
+      };
     }
     // ---- round 3 fixtures: copy bot, replay, morning post. Own seeded generators, so the fixtures above stay the same ----
     const rngOf = (s0) => { let a = s0 | 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
