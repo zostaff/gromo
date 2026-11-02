@@ -21,7 +21,7 @@ from . import config, db
 log = logging.getLogger("notify")
 
 TG_API = "https://api.telegram.org"
-APP_TITLE = "GROKHOOD Desk"
+APP_TITLE = "GROMO"
 _client: httpx.AsyncClient | None = None
 
 

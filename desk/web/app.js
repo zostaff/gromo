@@ -1,4 +1,4 @@
-/* GROKHOOD Desk: iPhone web app. Plain JS, no build.
+/* GROMO: iPhone web app (analysis powered by GROKHOOD). Plain JS, no build.
    Real mode reads only /api/* (shapes in docs/ARCHITECTURE.md). ?demo=1 uses the local fixture
    generator at the bottom of this file, shows a grey DEMO pill, and never talks to the backend. */
 (function () {
@@ -114,10 +114,10 @@
   };
   function bannerText() {
     if (!net.failing) return '';
-    if (net.authFail) return 'Not signed in · open your desk link from Telegram';
+    if (net.authFail) return 'Not signed in · open your GROMO link from Telegram';
     const n = Math.max(0, Math.ceil((net.retryAt - Date.now()) / 1000));
     const last = net.lastOk ? time(net.lastOk) : 'never';
-    return `Desk offline · retrying in ${n}s · last update ${last}`;
+    return `GROMO offline · retrying in ${n}s · last update ${last}`;
   }
   function paintBanners() { const t = bannerText(); $$('.offline').forEach((b) => { b.textContent = t; }); }
   setInterval(() => {
@@ -418,8 +418,8 @@
   const REFUSED = ['scanner', 'auditor', 'analyst'];
   function replayHeadline(s, cls) {
     s = s || {};
-    if (num(s.refused) === 0) return 'Desk has not said no to a coin in this window yet';
-    return `Desk said no to <b>${intf(s.refused)}</b> coin${num(s.refused) === 1 ? '' : 's'}, <b class="${cls || 'lime'}">${intf(s.dodged)}</b> of them would have lost money`;
+    if (num(s.refused) === 0) return 'GROMO has not said no to a coin in this window yet';
+    return `GROMO said no to <b>${intf(s.refused)}</b> coin${num(s.refused) === 1 ? '' : 's'}, <b class="${cls || 'lime'}">${intf(s.dodged)}</b> of them would have lost money`;
   }
   function replayCard(d) {
     const s = d.summary || {};
@@ -435,7 +435,7 @@
     const page = { el: el(`<section>
       <header class="nav">
         <a href="#/account" class="avatar" aria-label="Account"><img src="icons/favicon.svg" alt=""></a>
-        <a href="#/agents" class="nav-title">GROKHOOD Desk <span class="chev">›</span></a>
+        <a href="#/agents" class="nav-title brand">GROMO <span class="chev">›</span></a>
         <div class="grow"></div>
         <button class="iconbtn" data-search aria-label="Search">${I.search}</button>
         <button class="iconbtn" data-bell aria-label="Notifications">${I.bell}<span class="dot" hidden></span></button>
@@ -573,7 +573,7 @@
     const root = $('#sheet-root');
     root.innerHTML = `<div class="sheet-bg"></div><div class="sheet full"><div class="grabber"></div>
       <div class="searchbar"><label>${I.search}<input type="search" placeholder="Name, symbol or mint" autocomplete="off" autocapitalize="off" spellcheck="false"></label><button data-x>Cancel</button></div>
-      <div class="list" data-res><div class="empty">Search coins the desk has seen</div></div></div>`;
+      <div class="list" data-res><div class="empty">Search coins GROMO has seen</div></div></div>`;
     const close = () => { root.innerHTML = ''; };
     $('.sheet-bg', root).onclick = close; $('[data-x]', root).onclick = close;
     const inp = $('input', root); setTimeout(() => inp.focus(), 50);
@@ -583,7 +583,7 @@
       const q = inp.value.trim();
       t = setTimeout(async () => {
         const my = ++seq; const box = $('[data-res]', root);
-        if (!q) { box.innerHTML = '<div class="empty">Search coins the desk has seen</div>'; return; }
+        if (!q) { box.innerHTML = '<div class="empty">Search coins GROMO has seen</div>'; return; }
         box.innerHTML = actSkel(3);
         try {
           const d = await api('/api/search?q=' + encodeURIComponent(q));
@@ -679,11 +679,11 @@
   };
 
   /* ================= COPY ================= */
-  // the Desk's opinion on a coin someone copied: the selling point of the tab, so it is always shown
+  // GROMO's opinion on a coin someone copied: the selling point of the tab, so it is always shown
   function deskChip(d, big) {
     const v = d && d.verdict;
     const cls = v === 'cleared' ? 'ok' : v === 'rejected' ? 'bad' : v === 'watching' ? 'wait' : 'unseen';
-    const label = v === 'cleared' ? (d.label || 'Cleared') : v === 'rejected' ? (d.label || 'Rejected') : v === 'watching' ? (d.label || 'Watching') : 'Desk has not seen it';
+    const label = v === 'cleared' ? (d.label || 'Cleared') : v === 'rejected' ? (d.label || 'Rejected') : v === 'watching' ? (d.label || 'Watching') : 'GROMO has not seen it';
     const ic = !big ? '' : v === 'cleared' ? I.check : v === 'rejected' ? I.x : '';
     return `<span class="dchip ${cls}${big ? ' big' : ''}"><img class="dm" src="icons/favicon.svg" alt="">${ic ? `<i>${ic}</i>` : ''}<span>${esc(label)}</span></span>`;
   }
@@ -726,7 +726,7 @@
         <${href ? `a href="${href}"` : 'div'} class="hot-top">${coinAvatar(coin)}<div class="rt"><b>${esc(h.name || h.symbol || 'n/a')}</b><span>${esc(h.symbol ? '$' + String(h.symbol).replace(/^\$/, '') : '')} · ${compact(h.usd)} bought · ${h.lastTs ? ago(h.lastTs) : 'n/a'}</span></div>
           <div class="hot-n"><b>${intf(h.buyers)}</b><span>buyer${num(h.buyers) === 1 ? '' : 's'}</span></div></${href ? 'a' : 'div'}>
         <div class="hot-who"><span class="stackav">${hs.slice(0, 4).map((x) => handleAv(x)).join('')}</span><span class="hw">${esc(who)}</span>${copyBtn(h.coinUrl)}</div>
-        <div class="hot-foot"><span class="hot-k">Desk</span>${deskChip(h.desk, true)}</div></div>`;
+        <div class="hot-foot"><span class="hot-k">GROMO</span>${deskChip(h.desk, true)}</div></div>`;
     }
     function tradeRow(t) {
       const buy = t.side === 'buy';
@@ -751,10 +751,10 @@
       box.innerHTML = stateCard(d)
         + (live || hot.length ? `<div class="section-h"><h2>Hot now <span class="muted">· 2+ traders</span></h2></div>
           ${hot.length ? hot.map(hotCard).join('') : '<div class="empty" style="padding:18px var(--g)">No coin bought by 2 followed traders in 24h</div>'}` : '')
-        + (live || trades.length ? `<div class="section-h"><h2>Trades</h2></div><div class="section-sub">What followed traders did, with the desk's verdict</div>
+        + (live || trades.length ? `<div class="section-h"><h2>Trades</h2></div><div class="section-sub">What followed traders did, with GROMO's verdict</div>
           <div class="list">${trades.length ? shown.map(tradeRow).join('') + (trades.length > shown.length || all ? `<button class="more" data-more>${all ? 'Show less' : `Show all ${trades.length}`}</button>` : '') : '<div class="empty" style="padding:18px 0">No trades from followed traders yet</div>'}</div>` : '')
         + (traders.length ? `<div class="group-h">Traders · ${intf(traders.length)} followed</div><div class="group">${traders.map(traderCell).join('')}</div>` : '')
-        + '<div class="group-f" style="text-align:center;padding:24px 16px 0">The copy bot buys from its own FOMO account.<br>The desk only shows what it thinks of each coin.</div>';
+        + '<div class="group-f" style="text-align:center;padding:24px 16px 0">The copy bot buys from its own FOMO account.<br>GROMO only shows what it thinks of each coin.</div>';
       const m = $('[data-more]', box); if (m) m.onclick = () => { all = !all; paint(); };
     }
     async function refresh() { try { S.copy = await api('/api/copy'); net.ok(); const y = root.scrollTop; paint(); root.scrollTop = y; } catch (e) { /* keep last */ } }
@@ -774,7 +774,7 @@
   const stageChip = (s) => (AG[s] ? `<span class="pill" style="background:${AG[s].hex}26;color:${AG[s].hex}">${AG[s].label}</span>` : '');
   PAGES.replay = function () {
     const shareArg = { h: S.replayH };
-    const page = { el: el(`<section>${navBack('Replay')}<div class="rp-head"><h1>Replay</h1><p>What the desk said no to, played forward</p></div>
+    const page = { el: el(`<section>${navBack('Replay')}<div class="rp-head"><h1>Replay</h1><p>What GROMO said no to, played forward</p></div>
       <div class="rp-chips">${RANGES_H.map(([h, l]) => `<button data-h="${h}">${l}</button>`).join('')}</div><div class="offline"></div><div data-c></div></section>`) };
     const root = page.el; bindBack(root);
     const box = $('[data-c]', root);
@@ -790,7 +790,7 @@
       $$('.rp-chips button', root).forEach((b) => b.classList.toggle('on', +b.dataset.h === S.replayH));
       const d = S.replay[S.replayH];
       if (d === undefined) { skelView(); return; }
-      if (!d) { box.innerHTML = '<div class="empty"><div class="dash"></div><b>Replay is not available</b>The desk could not build it right now</div>'; return; }
+      if (!d) { box.innerHTML = '<div class="empty"><div class="dash"></div><b>Replay is not available</b>GROMO could not build it right now</div>'; return; }
       const s = d.summary || {};
       const label = (RANGES_H.find((r) => r[0] === S.replayH) || [0, (d.windowH || S.replayH) + 'H'])[1];
       const stages = d.byStage || [];
@@ -811,7 +811,7 @@
           <div class="rv"><b class="${signCls(r.simPct)}">${pct(r.simPct, 1)}</b><span>${esc(EXIT_K[r.simExit] || r.simExit || 'n/a')} · end ${pct(r.endPct, 0)}</span></div></a>`;
       };
       box.innerHTML = `
-        <div class="rp-hero"><img class="rp-m" src="icons/favicon.svg" alt="">
+        <div class="rp-hero"><img class="rp-m" src="icons/glyph.svg" alt="">
           <div class="rp-k">LAST ${esc(label)} · ${intf(d.evaluated)} REPLAYED</div>
           <div class="rp-big"><b>${intf(s.dodged)}</b><span>coins<br>dodged</span></div>
           <p class="rp-line">${replayHeadline(s)}</p></div>
@@ -827,7 +827,7 @@
         <div class="funnel">${funnel}</div>
         <div class="section-h"><h2>Coins</h2></div><div class="section-sub">Biggest simulated moves first</div>
         <div class="list">${rows.length ? rows.map(rowHtml).join('') : '<div class="empty" style="padding:22px 0"><div class="dash"></div>Nothing replayed yet</div>'}</div>
-        <div class="group-f rp-note">${intf(d.pending)} pending · ${intf(d.noData)} without price data. Each coin is replayed for ${num(d.horizonH) != null ? intf(d.horizonH) + 'h' : 'n/a'} from the decision with the desk's stop, trailing stop, timeout and FOMO fees, as if bought at the decision price.</div>`;
+        <div class="group-f rp-note">${intf(d.pending)} pending · ${intf(d.noData)} without price data. Each coin is replayed for ${num(d.horizonH) != null ? intf(d.horizonH) + 'h' : 'n/a'} from the decision with GROMO's stop, trailing stop, timeout and FOMO fees, as if bought at the decision price.</div>`;
     }
     async function load(h) {
       paint();
@@ -939,7 +939,7 @@
     page.load = async function load() {
       paint();
       try { S.coin[mint] = await api('/api/coin/' + encodeURIComponent(mint)); net.ok(); paint(); }
-      catch (e) { if (e.status === 404) { box.innerHTML = '<div class="empty"><div class="dash"></div><b>Coin not found</b>The desk has no record of this mint</div>'; return; } net.fail(load, e); }
+      catch (e) { if (e.status === 404) { box.innerHTML = '<div class="empty"><div class="dash"></div><b>Coin not found</b>GROMO has no record of this mint</div>'; return; } net.fail(load, e); }
     };
     let pending = false;
     page.onEvent = (t, d) => {
@@ -988,7 +988,8 @@
         <div class="list layer-rows" data-rows>${Array.from({ length: NL }, (_, i) => layerRow(i + 1)).join('')}</div>
         <div class="group-h">Auditor</div>
         <div class="group"><div class="cell"><div class="cl">Take apart before buying<small>${NL} parts per coin, every coin</small></div><label class="switch"><input type="checkbox" data-en><i></i></label></div></div>
-        <div class="group-f">Off means the desk buys without the 8 checks. Not advised.</div>`;
+        <div class="group-f">Off means GROMO buys without the 9 checks. Not advised.</div>
+        <div class="credit"><i></i>Analysis powered by <b>GROKHOOD</b></div>`;
       built = true;
       bindToggle();
       paintCta();
@@ -1016,7 +1017,7 @@
       const checked = Object.values(L).filter((l) => l.pass === true).length;
       if (meta && meta.passed === false || failed.length) {
         const reason = (meta && meta.reason) || (failed[0] ? `${failed[0].name.toLowerCase()} ${failed[0].value}` : 'failed');
-        v.innerHTML = `<h1 class="bad">Rejected · ${esc(reason)}</h1><p>The desk won't buy ${name}</p>`;
+        v.innerHTML = `<h1 class="bad">Rejected · ${esc(reason)}</h1><p>GROMO won't buy ${name}</p>`;
       } else {
         v.innerHTML = `<h1 class="ok">Cleared · ${checked}/${NL} parts</h1><p>${name} goes to the Analyst</p>`;
       }
@@ -1084,9 +1085,9 @@
       inp.addEventListener('change', async () => {
         if (!inp.checked) {
           inp.checked = true;
-          const a = await sheet({ title: 'Turn off the Auditor?', text: 'The desk will stop taking coins apart before buying.', ok: 'Turn off' });
+          const a = await sheet({ title: 'Turn off the Auditor?', text: 'GROMO will stop taking coins apart before buying.', ok: 'Turn off' });
           if (!a) return;
-          const b = await sheet({ title: 'Are you sure?', text: 'Without the 8 checks, rugs with a dev holding 30% get through.', ok: 'Yes, turn it off' });
+          const b = await sheet({ title: 'Are you sure?', text: 'Without the 9 checks, rugs with a dev holding 30% get through.', ok: 'Yes, turn it off' });
           if (!b) return;
           inp.checked = false;
         }
@@ -1131,7 +1132,7 @@
       <div class="group" style="margin-top:28px">${Array.from({ length: 4 }, () => `<div class="cell">${skel('70%', 18)}</div>`).join('')}</div></div></section>`) };
     const root = page.el;
     const box = $('[data-c]', root);
-    const GROUPS = [['scanner', 'Scanner'], ['auditor', 'Auditor'], ['analyst', 'Analyst'], ['executor', 'Executor'], ['risk', 'Risk'], ['desk', 'Desk']];
+    const GROUPS = [['scanner', 'Scanner'], ['auditor', 'Auditor'], ['analyst', 'Analyst'], ['executor', 'Executor'], ['risk', 'Risk'], ['desk', 'GROMO']];
     const SKIP = new Set(['desk.mode', 'analyst.mode', 'auditor.enabled', 'desk.live_stack', 'desk.paper_start_stack']);
     function paint() {
       const a = S.account; if (!a) return;
@@ -1143,7 +1144,7 @@
       box.innerHTML = `
         <div class="group"><div class="cell" style="min-height:76px">
           <span class="avatar" style="width:52px;height:52px"><img src="icons/favicon.svg" alt=""></span>
-          <div class="cl"><b style="font-size:20px">${esc(a.handle ? '@' + String(a.handle).replace(/^@/, '') : 'GROKHOOD Desk')}</b><small>${a.mode === 'LIVE' ? 'LIVE stack' : 'PAPER stack'} · ${usd(a.stack)}</small></div>${modePill()}</div></div>
+          <div class="cl"><b style="font-size:20px">${esc(a.handle ? '@' + String(a.handle).replace(/^@/, '') : 'GROMO')}</b><small>${a.mode === 'LIVE' ? 'LIVE stack' : 'PAPER stack'} · ${usd(a.stack)}</small></div>${modePill()}</div></div>
 
         <div class="group-h">Morning post</div>
         <div data-post></div>
@@ -1158,7 +1159,7 @@
         <div class="group-h">FOMO</div>
         <div class="group">
           ${a.profileUrl ? `<a class="cell link" href="${esc(a.profileUrl)}" target="_blank" rel="noopener"><div class="cl">Your FOMO profile<small>${esc(a.handle ? '@' + String(a.handle).replace(/^@/, '') : '')}</small></div><span class="chev">›</span></a>`
-            : '<div class="cell"><div class="cl">Your FOMO profile<small>Set your handle in Desk settings below</small></div></div>'}
+            : '<div class="cell"><div class="cl">Your FOMO profile<small>Set your handle in GROMO settings below</small></div></div>'}
           <button class="cell link" data-invite style="text-align:left"><div class="cl">Invite a friend<small>Your FOMO referral link</small></div><span class="chev">›</span></button>
         </div>
 
@@ -1175,7 +1176,7 @@
           ${pushRow}
           <button class="cell btn" data-test>Send test push</button>
         </div>
-        ${standalone() ? '' : '<div class="group-f">Add the desk to your Home Screen to turn on push notifications.</div>'}
+        ${standalone() ? '' : '<div class="group-f">Add GROMO to your Home Screen to turn on push notifications.</div>'}
 
         ${GROUPS.map(([g, label]) => {
           const keys = Object.keys(st).filter((k) => k.startsWith(g + '.') && !SKIP.has(k));
@@ -1183,7 +1184,8 @@
           return `<div class="group-h">${glyphMini(g)}${label}</div><div class="group">${keys.map((k) => settingCell(k, st[k])).join('')}</div>`;
         }).join('')}
         ${S.settings ? '' : `<div class="group-h">Settings</div><div class="group">${Array.from({ length: 4 }, () => `<div class="cell">${skel('80%', 18)}</div>`).join('')}</div>`}
-        <div class="group-f" style="text-align:center;padding:28px 16px 0">GROKHOOD Desk never holds keys and never places orders.<br>You tap Buy and Sell on FOMO.</div>`;
+        <div class="about"><img src="icons/glyph.svg" alt=""><div class="about-n">GROMO</div>GROMO never holds keys and never places orders.<br>You tap Buy and Sell on FOMO.</div>
+        <div class="credit"><i></i>Analysis powered by <b>GROKHOOD</b></div>`;
       bind();
       paintPost();
     }
@@ -1269,7 +1271,7 @@
       $$('[data-mode] button', box).forEach((b) => b.onclick = async () => {
         const m = b.dataset.m; if (m === S.account.mode) return;
         if (m === 'LIVE') {
-          const ok = await sheet({ title: 'Switch to LIVE', text: 'Tickets are sized from your real stack. The desk still never trades for you. Type LIVE to confirm.', ok: 'Switch to LIVE', okClass: '', input: 'LIVE' });
+          const ok = await sheet({ title: 'Switch to LIVE', text: 'Tickets are sized from your real stack. GROMO still never trades for you. Type LIVE to confirm.', ok: 'Switch to LIVE', okClass: '', input: 'LIVE' });
           if (!ok) return;
         }
         try { await api('/api/mode', { method: 'POST', body: m === 'LIVE' ? { mode: 'LIVE', confirm: 'LIVE' } : { mode: 'PAPER' } }); S.account.mode = m; if (S.state) S.state.mode = m; toast(`${m} mode`); paint(); }
@@ -1309,7 +1311,7 @@
     }
     async function enablePush() {
       const a = S.account;
-      if (!a.vapidPublicKey) { toast('Push is not set up on the desk'); return; }
+      if (!a.vapidPublicKey) { toast('Push is not set up on this GROMO server'); return; }
       try {
         const reg = await navigator.serviceWorker.register('sw.js');
         const perm = await Notification.requestPermission();
@@ -1664,11 +1666,11 @@
       const rp = replayObj(24).summary;
       const bal = st.balance;
       const ch = (bal / NIGHT - 1) * 100;
-      const text = (preview ? 'GROKHOOD Desk · tonight so far (PAPER)\n\n' : 'GROKHOOD Desk · last night (PAPER)\n\n')
+      const text = (preview ? 'GROMO · tonight so far (PAPER)\n\n' : 'GROMO · last night (PAPER)\n\n')
         + `${usd(NIGHT)} to ${usd(bal)}, ${pct(ch)} on the night\n`
         + '3 wins, 1 loss. Best: $LFROG +80.8% on a trailing stop\n\n'
-        + `The Auditor took apart ${intf(st.counts.auditor)} coins.\nReplayed 6h later: the desk said no to ${rp.refused}, and ${rp.dodged} of them would have lost money.\n\n`
-        + 'Every buy is a tap on FOMO. The desk never trades for you.';
+        + `The Auditor took apart ${intf(st.counts.auditor)} coins.\nReplayed 6h later: GROMO said no to ${rp.refused}, and ${rp.dodged} of them would have lost money.\n\n`
+        + 'Every buy is a tap on FOMO. GROMO never trades for you.';
       return { date, text, cardUrl };
     }
     return { api: apiDemo, stream: streamDemo, coins, bySym };

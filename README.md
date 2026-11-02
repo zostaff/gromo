@@ -1,7 +1,10 @@
-<p align="center"><img src="docs/readme/hero.png" alt="GROKHOOD Desk: 5 AI agents, 1 button"></p>
+<p align="center"><img src="docs/readme/hero.png" alt="GROMO: 5 AI agents, 1 button"></p>
+
+<h1 align="center">GROMO</h1>
 
 <p align="center">
-<b>5 AI agents find, take apart, judge, size and guard every new memecoin on Solana and Robinhood Chain.<br>You get one button. You tap it.</b>
+<b>5 AI agents find, take apart, judge, size and guard every new memecoin on Solana and Robinhood Chain.<br>You get one button. You tap it.</b><br>
+<sub>Rug and ring analysis powered by <a href="https://grokhood.tech">GROKHOOD</a> · Grok as the judge · trades on FOMO</sub>
 </p>
 
 <p align="center">
@@ -11,7 +14,9 @@
 <img src="https://img.shields.io/badge/tests-114_passing-00d35a?style=for-the-badge&labelColor=000">
 </p>
 
-The desk never places an order and never holds a key. FOMO has no public order API, so every signal ends with a **Buy on FOMO** / **Sell on FOMO** button that opens the coin in FOMO, where you trade yourself. Rug-ring detection on Robinhood Chain comes from [GROKHOOD](https://grokhood.tech).
+The desk never places an order and never holds a key. FOMO has no public order API, so every signal ends with a **Buy on FOMO** / **Sell on FOMO** button that opens the coin in FOMO, where you trade yourself. 
+
+**Analysis powered by [GROKHOOD](https://grokhood.tech).** GROMO is its own project: GROKHOOD is the main analysis engine it plugs into, the rug-ring scanner behind the Robinhood Chain audit (Safety Score, rings, known operators, insider dump alerts, X activity) and the Safety Score on every copy-bot card.
 
 <p align="center"><img src="docs/readme/pipeline.png" alt="Scanner, Auditor, Analyst, Executor, Risk"></p>
 
@@ -20,14 +25,14 @@ The desk never places an order and never holds a key. FOMO has no public order A
 | Agent | Job | Sources |
 |---|---|---|
 | **Scanner** | Hears every pumpfun graduation and every graduated Pons launch, waits for the pool to age, kills thin, concentrated, overheated and copycat coins | PumpPortal migrations, DexScreener, GROKHOOD stream |
-| **Auditor** | Takes each coin apart in 8 layers, one red layer kills it | Solana RPC, RugCheck; GROKHOOD Safety Score, rings, known operators, insider dump alerts |
+| **Auditor** | Takes each coin apart in 9 layers, one red layer kills it | Solana RPC, RugCheck; GROKHOOD Safety Score, rings, known operators, insider dump alerts |
 | **Analyst** | Asks 4 closed questions (alive in 6h, organic buyers, flush being absorbed, chasing a run), code applies the gate | Grok (xAI, structured output, daily budget) or a free rules mode |
 | **Executor** | Sizes the ticket (% of stack, capped by pool liquidity, FOMO fee tiers), re-checks, sends the button | DexScreener |
 | **Risk** | Polls every open position, stop, trailing stop, dead-money timeout, sends the Sell button | DexScreener |
 
 **Solana audit layers:** mint authority, freeze authority, dev wallet (share + sold since migration), top 10 holders without pool and curve, LP locked or burned, pool age, bundled wallets (biggest funding cluster), token delegations (Token + Token-2022 accounts grouped by delegate), **dev history** (how many coins this creator launched this week and how many are dead).
 
-**Robinhood Chain audit layers (GROKHOOD):** Safety Score, rug rings, known operators, dev wallet, top 10 holders, snipe-tax exempt wallets, linked clusters, insider dump alerts, **X activity** (organic or coordinated shill).
+**Robinhood Chain audit layers (powered by GROKHOOD):** Safety Score, rug rings, known operators, dev wallet, top 10 holders, snipe-tax exempt wallets, linked clusters, insider dump alerts, **X activity** (organic or coordinated shill).
 
 Every reject names the agent, the layer or rule and the value: `Auditor · dev holds 31%`, `Analyst · chase 0.41`.
 

@@ -27,7 +27,7 @@ AGENTS = report.AGENTS
 NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 RANGES = {"LIVE": 30 * 60, "1H": 3600, "4H": 4 * 3600, "1D": 86400, "1W": 7 * 86400, "ALL": None}
 
-app = FastAPI(title="GROKHOOD Desk", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="GROMO", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # ---- auth -------------------------------------------------------------------------------

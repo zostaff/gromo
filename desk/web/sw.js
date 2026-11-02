@@ -1,6 +1,6 @@
-/* GROKHOOD Desk service worker: app shell cache + Web Push. Never caches /api. */
-const CACHE = 'desk-v3';
-const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'chart.js', 'share.js', 'manifest.json', 'icons/favicon.svg', 'icons/icon-180.png', 'icons/icon-192.png'];
+/* GROMO service worker: app shell cache + Web Push. Never caches /api. */
+const CACHE = 'desk-v4';
+const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'chart.js', 'share.js', 'manifest.json', 'icons/favicon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/glyph.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -24,7 +24,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
-  const title = d.title || 'GROKHOOD Desk';
+  const title = d.title || 'GROMO';
   const opts = {
     body: d.body || d.text || '',
     icon: 'icons/icon-192.png',

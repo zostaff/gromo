@@ -65,7 +65,7 @@ def _money(v: float) -> str:
 
 def text(s: dict) -> str:
     """The X post. Plain English, hyphens only, every number from `s`."""
-    lines = [f"Night report from my AI trading desk ({s['mode']}).", ""]
+    lines = [f"GROMO night report ({s['mode']}). My 5 AI agents trading memecoins.", ""]
     lines.append(f"5 agents watched {s['heard']} new coins on Solana and Robinhood Chain.")
     lines.append(f"Scanner killed {s['killed']}. Auditor took {s['audited']} apart and refused {s['auditor_no']}. "
                  f"Analyst refused {s['analyst_no']}.")
@@ -85,7 +85,7 @@ def text(s: dict) -> str:
                      f"under its own stop rules within {s['replay_horizon_h']:g}h.")
         if s["dumped"]:
             lines.append(f"{s['dumped']} fell more than 50%.")
-    lines += ["", "Built on GROKHOOD + FOMO."]
+    lines += ["", "Rug checks powered by GROKHOOD. Trades on FOMO."]
     return "\n".join(lines)
 
 
@@ -117,7 +117,7 @@ def card(s: dict, date_label: str) -> bytes:
     mw = d.textlength(mode, font=bold(17)) + 26
     d.rounded_rectangle((hx, 46, hx + mw, 76), radius=15, outline=mcol, width=2)
     d.text((hx + 13, 50), mode, font=bold(17), fill=mcol)
-    wm = "GROKHOOD DESK"
+    wm = "GROMO"
     d.text((W - 56 - d.textlength(wm, font=black(26)), 44), wm, font=black(26), fill=WHITE)
 
     # big number: PnL if traded, else coins watched
@@ -150,7 +150,7 @@ def card(s: dict, date_label: str) -> bytes:
         d.text((78, 511), msg, font=bold(30), fill=INK)
         d.text((60, 576), f"Replay: same stop rules, {s['replay_horizon_h']:g}h after each decision",
                font=med(20), fill=GREY)
-    d.text((56, H - 50), "5 AI agents  ·  Solana + Robinhood Chain  ·  built on GROKHOOD + FOMO",
+    d.text((56, H - 50), "5 AI agents  ·  Solana + Robinhood Chain  ·  analysis powered by GROKHOOD",
            font=med(20), fill=(99, 99, 102))
 
     # mascot

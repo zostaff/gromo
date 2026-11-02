@@ -1,4 +1,4 @@
-/* Canvas charts for GROKHOOD Desk: live balance line, coin candles, analyst score ring.
+/* Canvas charts for GROMO: live balance line, coin candles, analyst score ring.
    devicePixelRatio aware. No libraries. */
 (function () {
   'use strict';

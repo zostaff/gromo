@@ -1,4 +1,4 @@
-/* GROKHOOD Desk: share cards for X. Drawn on <canvas>, no libraries.
+/* GROMO: share cards for X. Drawn on <canvas>, no libraries.
    Four cards (trade, night, audit, replay), each in 1200x675 (post) and 1080x1350 (portrait).
    Only data the app already reads from /api (shapes in docs/ARCHITECTURE.md). Missing data is left out,
    never filled in. Shared as a PNG File via navigator.share, else downloaded.
@@ -54,29 +54,29 @@
     });
   }
 
-  /* ================= mascot ================= */
-  // the logo mascot (brand/logo.svg), recoloured per card: body, outline ink, hat, eyes, spark
-  function mascotSVG(o) {
-    const body = o.body || INK, ink = o.ink || INK, hat = o.hat || LIME, spark = o.spark || ink, fuse = o.fuse || ink;
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">${o.bg ? `<rect width="512" height="512" rx="114" fill="${o.bg}"/>` : ''}
-<g transform="translate(256 256) scale(0.93) translate(-278 -282)">
-${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke="${o.ring || ink}" stroke-width="11" opacity="0.3"/>`}
-<path d="M352 238 L384 206 L404 226 L452 152" fill="none" stroke="${fuse}" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M458 84 Q463 124 500 132 Q463 140 458 180 Q453 140 416 132 Q453 124 458 84 Z" fill="${spark}"/>
-<rect x="326" y="222" width="46" height="38" rx="9" transform="rotate(-42 349 241)" fill="${body}"/>
-<circle cx="236" cy="326" r="148" fill="${body}"/>
-<g stroke="${o.eye || '#fff'}" stroke-width="40" stroke-linecap="round"><line x1="232" y1="284" x2="254" y2="316"/><line x1="314" y1="252" x2="336" y2="284"/></g>
-<g transform="translate(30 -2) rotate(-19 210 230)" stroke="${ink}" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
-<path d="M84 238 L50 136 C120 150 220 140 290 160 C330 172 350 200 352 228 Z" fill="${hat}"/>
-<path d="M40 240 C150 262 280 246 372 220 C300 206 160 222 40 240 Z" fill="${hat}"/>
-<g transform="rotate(24 128 210)"><path d="M30 66 C16 88 60 158 132 214 C116 140 74 72 30 66 Z" fill="#fff"/><path d="M36 78 L122 198" fill="none" stroke-width="6"/></g>
-</g></g></svg>`;
+  /* ================= GROMO glyph ================= */
+  // the app icon glyph (path data from brand/logo.svg), recoloured per card: g = the G, its arrow and spark,
+  // eye = the two pill eyes, bg = optional rounded square. Without bg the viewBox hugs the glyph.
+  function glyphSVG(o) {
+    const g = o.g || INK, eye = o.eye || WHITE;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${o.bg ? '0 0 512 512' : '52 22 432 432'}" width="512" height="512">${o.bg ? `<rect width="512" height="512" rx="114" fill="${o.bg}"/>` : ''}
+<g fill="none" stroke="${g}" stroke-linecap="round" stroke-linejoin="round"><path d="M343 196 A140 140 0 1 0 374 310 L292 310" stroke-width="62"/><path d="M326 188 L386 236 L440 142" stroke-width="40"/></g>
+<path d="M466 98 L470 160 L410 128 Z" fill="${g}" stroke="${g}" stroke-width="10" stroke-linejoin="round"/>
+<g stroke="${eye}" stroke-width="34" stroke-linecap="round"><line x1="196" y1="244" x2="208" y2="286"/><line x1="256" y1="230" x2="268" y2="272"/></g>
+<path d="M392 34 Q396 66 424 72 Q396 78 392 110 Q388 78 360 72 Q388 66 392 34 Z" fill="${g}"/></svg>`;
   }
-  const mascotCache = {};
-  function mascot(o) {
+  const glyphCache = {};
+  function glyph(o) {
     const k = JSON.stringify(o);
-    if (!mascotCache[k]) mascotCache[k] = loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(mascotSVG(o)));
-    return mascotCache[k];
+    if (!glyphCache[k]) glyphCache[k] = loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(glyphSVG(o)));
+    return glyphCache[k];
+  }
+  // decorative glyph with an optional soft glow, rotated around its centre
+  function sticker(c, m, x, y, ms, rot, glow) {
+    if (!m) return;
+    c.save(); c.translate(x + ms / 2, y + ms / 2); c.rotate(rot || 0);
+    if (glow) { c.shadowColor = glow; c.shadowBlur = Math.round(ms * 0.22); }
+    c.drawImage(m, -ms / 2, -ms / 2, ms, ms); c.restore();
   }
 
   /* ================= canvas primitives ================= */
@@ -154,18 +154,26 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
   function inkOf(theme) { return theme === 'dark' ? WHITE : INK; }
   function soft(theme, a) { return theme === 'dark' ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`; }
 
-  // small brand mark: mascot + "GROKHOOD Desk". align right: x is the right edge
+  // small brand mark: app icon + "GROMO". align right: x is the right edge. returns the drawn width
   async function wordmark(c, x, y, theme, size, align) {
     size = size || 30;
-    const m = await mascot(theme === 'dark' ? { bg: LIME } : theme === 'red' ? { bg: INK, body: LIME, ink: INK, hat: WHITE, fuse: LIME, spark: LIME, ring: false } : { ring: false });
-    const ms = size * 1.7;
-    const w1 = measure(c, 'GROKHOOD', 900, size), w2 = measure(c, 'Desk', 700, size);
-    const total = ms + size * 0.4 + w1 + size * 0.28 + w2;
-    let x0 = align === 'right' ? x - total : x;
-    if (m) c.drawImage(m, x0, y - ms * 0.78, ms, ms);
-    x0 += ms + size * 0.4;
-    txt(c, 'GROKHOOD', x0, y, { size, w: 900, color: inkOf(theme), track: -0.5 });
-    txt(c, 'Desk', x0 + w1 + size * 0.28, y, { size, w: 700, color: theme === 'dark' ? LIME : theme === 'red' ? WHITE : 'rgba(0,0,0,0.55)' });
+    const m = await glyph(theme === 'dark' ? { bg: LIME, g: INK, eye: WHITE } : { bg: INK, g: LIME, eye: WHITE });
+    const ms = Math.round(size * 1.45), gap = size * 0.38;
+    const ww = measure(c, 'GROMO', 900, size);
+    const total = ms + gap + ww;
+    const x0 = align === 'right' ? x - total : x;
+    if (m) c.drawImage(m, x0, y - size * 0.36 - ms / 2, ms, ms);
+    txt(c, 'GROMO', x0 + ms + gap, y, { size, w: 900, color: inkOf(theme), track: 0.5 });
+    return total;
+  }
+  // muted data-source credit: "analysis by GROKHOOD"
+  function credit(c, x, y, theme, size, align) {
+    const a = theme === 'dark' ? 'rgba(235,235,245,' : 'rgba(0,0,0,';
+    const w1 = measure(c, 'analysis by ', 600, size), w2 = measure(c, 'GROKHOOD', 800, size) + 0.6 * 8;
+    const x0 = align === 'right' ? x - w1 - w2 : x;
+    txt(c, 'analysis by ', x0, y, { size, w: 600, color: a + '0.42)' });
+    txt(c, 'GROKHOOD', x0 + w1, y, { size, w: 800, color: a + '0.6)', track: 0.6 });
+    return w1 + w2;
   }
   function modeTag(c, x, y, theme, mode, size, align) {
     if (!mode) return 0;
@@ -287,13 +295,10 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     for (const a of d.agents) {
       ax += pill(c, a.text, ax, ay, { size: port ? 26 : 22, w: 800, bg: 'rgba(0,0,0,0.88)', fg: WHITE, icon: (cc, x, y, s) => { cc.beginPath(); cc.arc(x, y, s * 0.42, 0, Math.PI * 2); cc.fillStyle = a.color; cc.fill(); }, padX: 18 }) + 12;
     }
-    // mascot peeking from the bottom right
-    const m = await mascot(win ? { ring: false } : { ring: false, hat: WHITE });
-    const ms = port ? 340 : 290;
-    if (m) {
-      c.save(); c.translate(W - ms * 0.86, H - ms * 0.62); c.rotate(win ? -0.12 : 0.18);
-      c.drawImage(m, -ms * 0.08, -ms * 0.14, ms, ms); c.restore();
-    }
+    // GROMO glyph peeking from the bottom right
+    const m = await glyph({ g: INK, eye: WHITE });
+    const ms = port ? 260 : 210;
+    sticker(c, m, W - ms - (port ? 30 : 24), H - ms * 0.74, ms, win ? -0.12 : 0.14, 'rgba(0,0,0,0.18)');
   }
 
   /* ================= NIGHT card ================= */
@@ -380,13 +385,11 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
       for (let i = 0; i < tiles.length; i++) await tradeTile(c, tx, 96 + i * 152, tw, 140, tiles[i][0], tiles[i][1], theme);
     }
     if (!tiles.length) txt(c, 'No closed trades yet tonight', port ? P : 760, port ? 1080 : 200, { size: 28, w: 700, color: 'rgba(235,235,245,0.55)' });
-    // mascot sticker
-    // the mascot rides the end of tonight's line
-    const m = await mascot({ ring: false, body: LIME, ink: INK, hat: WHITE, fuse: LIME, spark: LIME });
-    if (m && endPt) {
-      const ms = port ? 230 : 160;
-      c.save(); c.translate(endPt[0] + ms * 0.02, endPt[1] - ms * 0.42); c.rotate(-0.1);
-      c.shadowColor = 'rgba(205,255,0,0.55)'; c.shadowBlur = 36; c.drawImage(m, -ms * 0.45, -ms * 0.6, ms, ms); c.restore();
+    // the GROMO glyph rides the end of tonight's line
+    const m = await glyph({ g: LIME, eye: WHITE });
+    if (endPt) {
+      const ms = port ? 200 : 140;
+      sticker(c, m, endPt[0] - ms * 0.5, endPt[1] - ms * 1.08, ms, -0.08, 'rgba(205,255,0,0.55)');
     }
   }
 
@@ -444,7 +447,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
       else pill(c, s, vx + 4, y - (port ? 66 : 48), { size: port ? 56 : 40, w: 900, bg: ink, fg: LIME, r: 18, padX: 22, icon: ICON.check });
     });
     const line2Y = vy + (port ? 96 : 72) + (Math.min(2, rLines.length) - 1) * (port ? 80 : 58) + (port ? 70 : 54);
-    const note = fail ? (d.failN ? `Auditor stopped at part ${d.failN} of ${d.total}. The desk won't buy.` : "The desk won't buy.") : 'Every part checked. Goes to the Analyst.';
+    const note = fail ? (d.failN ? `Auditor stopped at part ${d.failN} of ${d.total}. GROMO won't buy.` : "GROMO won't buy.") : 'Every part checked. Goes to the Analyst.';
     const nLines = wrap(c, note, port ? W - P * 2 : 500, 700, port ? 30 : 25);
     nLines.slice(0, 2).forEach((s, i) => txt(c, s, vx + 4, line2Y + i * (port ? 40 : 33), { size: port ? 30 : 25, w: 700, color: soft(theme, 0.72) }));
 
@@ -473,10 +476,12 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     });
 
     // brand
-    await wordmark(c, P, H - (port ? 56 : 44), theme, port ? 30 : 25);
-    const m = await mascot(fail ? { ring: false, hat: WHITE } : { ring: false });
-    if (m && !port) { const ms = 150; c.save(); c.translate(572 - ms - 4, H - ms - 10); c.rotate(fail ? 0.2 : -0.1); c.drawImage(m, 0, 0, ms, ms); c.restore(); }
-    if (m && port) { const ms = 200; c.save(); c.translate(W - P - ms + 30, 360); c.rotate(fail ? 0.2 : -0.1); c.drawImage(m, 0, 0, ms, ms); c.restore(); }
+    const wy = H - (port ? 56 : 44);
+    const ww = await wordmark(c, P, wy, theme, port ? 30 : 25);
+    credit(c, P + ww + (port ? 22 : 18), wy, theme, port ? 20 : 16);
+    const m = await glyph({ g: INK, eye: WHITE });
+    if (!port) sticker(c, m, 572 - 140 - 14, H - 140 - 92, 140, fail ? 0.16 : -0.1, 'rgba(0,0,0,0.16)');
+    else sticker(c, m, W - P - 170, 380, 170, fail ? 0.16 : -0.1, 'rgba(0,0,0,0.16)');
   }
   function wrap(c, s, max, w, size) {
     c.font = F(w, size);
@@ -508,7 +513,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
 
     // sentence
     const sy = bigY + (port ? 80 : 68);
-    const l1 = num(s.refused) != null ? `Desk said no to ${s.refused} coin${s.refused === 1 ? '' : 's'}.` : 'Desk said no to n/a coins.';
+    const l1 = num(s.refused) != null ? `GROMO said no to ${s.refused} coin${s.refused === 1 ? '' : 's'}.` : 'GROMO said no to n/a coins.';
     const l2 = num(s.dodged) != null ? `${s.dodged} would have lost money.` : null;
     txt(c, l1, P, sy, { size: port ? 44 : 34, w: 900, color: WHITE, max: port ? W - P * 2 : 600, track: -0.5 });
     if (l2) txt(c, l2, P, sy + (port ? 56 : 44), { size: port ? 44 : 34, w: 900, color: 'rgba(235,235,245,0.6)', max: port ? W - P * 2 : 600, track: -0.5 });
@@ -524,7 +529,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
     c.save(); c.shadowColor = 'rgba(0,0,0,0.4)'; c.shadowBlur = 30; c.shadowOffsetY = 10;
     rr(c, sp.x, sp.y, sp.w, sp.h, 30); c.fillStyle = 'rgba(28,28,30,0.92)'; c.fill(); c.restore();
     rr(c, sp.x, sp.y, sp.w, sp.h, 30); c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,0.08)'; c.stroke();
-    txt(c, 'WHERE THE DESK SAID NO', sp.x + 28, sp.y + (port ? 50 : 42), { size: port ? 21 : 17, w: 800, color: 'rgba(235,235,245,0.5)', track: 2 });
+    txt(c, 'WHERE GROMO SAID NO', sp.x + 28, sp.y + (port ? 50 : 42), { size: port ? 21 : 17, w: 800, color: 'rgba(235,235,245,0.5)', track: 2 });
     const stages = (d.byStage || []).filter((x) => AGC[x.stage] && x.stage !== 'executor');
     const max = Math.max(1, ...stages.map((x) => num(x.n) || 0));
     const top = sp.y + (port ? 100 : 84), rowH = port ? 88 : 70;
@@ -559,17 +564,16 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
       txt(c, pct(d.dump.endPct, 0) || 'n/a', t.x + t.w - 26, yb, { size: port ? 44 : 38, w: 900, color: RED, align: 'right' });
       if (lbl) txt(c, 'refused by ' + lbl, t.x + t.w - 26, t.y + (port ? 38 : 34), { size: port ? 19 : 16, w: 700, color: AGC[d.dump.stage][1], align: 'right' });
     }
-    // footnote + mascot
-    const fn = `Each refusal replayed ${num(d.horizonH) != null ? d.horizonH + 'h' : ''} with the desk's own stop, trail and fees`.replace('  ', ' ');
-    txt(c, fn, P, H - (port ? 56 : 40), { size: port ? 22 : 17, w: 700, color: 'rgba(235,235,245,0.45)', max: port ? W - P * 2 - 220 : 620 });
-    const m = await mascot({ ring: false, body: LIME, ink: INK, hat: WHITE, fuse: LIME, spark: LIME });
-    if (m) {
-      const ms = port ? 230 : 150;
-      let mx = port ? W - P - ms + 10 : 560, my = port ? 150 : bigY - 214;
-      if (lx + dw + 20 > mx) { mx = port ? W - P - ms * 0.8 : W - ms - 10; my = port ? H - ms * 0.86 : H - ms - 6; }
-      c.save(); c.translate(mx, my); c.rotate(port ? -0.1 : 0.08);
-      c.shadowColor = 'rgba(205,255,0,0.55)'; c.shadowBlur = 36; c.drawImage(m, 0, 0, ms, ms); c.restore();
-    }
+    // footnote + data-source credit + glyph
+    const fy = H - (port ? 56 : 40);
+    const cw = credit(c, W - P, fy, theme, port ? 20 : 16, 'right');
+    const fn = `Each refusal replayed ${num(d.horizonH) != null ? d.horizonH + 'h' : ''} with GROMO's own stop, trail and fees`.replace('  ', ' ');
+    txt(c, fn, P, fy, { size: port ? 22 : 17, w: 700, color: 'rgba(235,235,245,0.45)', max: W - P * 2 - cw - 40 });
+    const m = await glyph({ g: LIME, eye: WHITE });
+    const ms = port ? 190 : 120;
+    let mx = port ? W - P - ms : 572, my = port ? 150 : bigY - 200;
+    if (lx + dw + 20 > mx) { mx = port ? W - P - ms : W - ms - 20; my = port ? 520 - ms : 40; }
+    sticker(c, m, mx, my, ms, port ? -0.08 : 0.08, 'rgba(205,255,0,0.5)');
   }
 
   /* ================= data (only what /api already returns) ================= */
@@ -683,7 +687,7 @@ ${o.ring === false ? '' : `<circle cx="208" cy="348" r="148" fill="none" stroke=
   const toBlob = (cv) => new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
   function fileName(kind, data, layout) {
     const s = (data.coin && sym(data.coin)) || (kind === 'replay' ? (data.windowH || 24) + 'h' : 'night');
-    return `grokhood-desk-${kind}-${s.toLowerCase().replace(/[^a-z0-9]+/g, '')}${layout === 'port' ? '-portrait' : ''}.png`;
+    return `gromo-${kind}-${s.toLowerCase().replace(/[^a-z0-9]+/g, '')}${layout === 'port' ? '-portrait' : ''}.png`;
   }
   async function shareFile(file) {
     try {

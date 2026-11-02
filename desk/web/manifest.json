@@ -1,6 +1,6 @@
 {
-  "name": "GROKHOOD Desk",
-  "short_name": "Desk",
+  "name": "GROMO",
+  "short_name": "GROMO",
   "description": "Five AI agents find, take apart, judge, size and guard memecoins. You tap Buy on FOMO.",
   "start_url": "./#/home",
   "scope": "./",

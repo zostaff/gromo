@@ -156,7 +156,7 @@ def render(night: dict | None, since: float, until: float, title_date: str) -> s
     su = links.signup_url()
     return f"""<!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>GROKHOOD Desk report {title_date}</title>
+<title>GROMO report {title_date}</title>
 <style>body{{font:15px -apple-system,system-ui,sans-serif;background:#0b0b0c;color:#eee;max-width:640px;margin:auto;padding:16px}}
 a{{color:#cdff00}}table{{width:100%;border-collapse:collapse}}td{{padding:6px 4px;border-bottom:1px solid #222}}
 .muted{{color:#888}}h2{{font-size:17px;margin-top:28px}}.red{{color:#ff5a5a}}.green{{color:#3ddc84}}</style></head>
