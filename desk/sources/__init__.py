@@ -10,7 +10,7 @@ import httpx
 log = logging.getLogger("sources")
 
 BACKOFF_429_S = 30.0
-UA = {"user-agent": "grokhood-copyfomo-desk/1.0", "accept": "application/json"}
+UA = {"user-agent": "gromo/1.0", "accept": "application/json"}
 
 
 class SourceError(RuntimeError):
