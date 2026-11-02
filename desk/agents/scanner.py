@@ -34,6 +34,7 @@ RUNNER_TTL_S = 86400
 
 room: dict[str, dict] = {}            # mint -> state while waiting
 _top10_cache: dict[str, tuple[float, float | None]] = {}
+TOP10_FAIL_TTL_S = 300               # a failed top 10 is not retried on every poll
 _poll_n = 0
 
 
@@ -267,7 +268,7 @@ async def on_migration(msg: dict) -> None:
 # ---- polling --------------------------------------------------------------------------
 async def _top10_cached(mint: str, pool: str | None) -> float | None:
     hit = _top10_cache.get(mint)
-    if hit and time.time() - hit[0] < TOP10_TTL_S and hit[1] is not None:
+    if hit and time.time() - hit[0] < (TOP10_TTL_S if hit[1] is not None else TOP10_FAIL_TTL_S):
         return hit[1]
     try:
         v = await top10_of(mint, pool)

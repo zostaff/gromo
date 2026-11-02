@@ -1,4 +1,4 @@
-"""Solana JSON-RPC client on config desk.rpc_url (jsonParsed everywhere).
+"""Solana JSON-RPC client on config desk.rpc_url (jsonParsed, except getProgramAccounts: base64 slice).
 
 Verified on the public mainnet-beta RPC (2026-11-02): getSlot, getAccountInfo, getMultipleAccounts,
 getTokenAccountsByOwner and getProgramAccounts (memcmp offset 0 = mint) answer;
@@ -121,18 +121,92 @@ async def token_balance(owner: str, mint: str) -> int:
     return total
 
 
-async def mint_token_accounts(mint: str) -> list[dict]:
-    """Every token account of the mint on Token AND Token-2022 (memcmp offset 0 = mint).
-    Returns parsed infos plus "pubkey". Raises RpcRefused when the RPC will not serve it."""
-    out: list[dict] = []
-    for prog in (TOKEN_PROGRAM, TOKEN_2022_PROGRAM):
-        res = await call("getProgramAccounts", [prog, {"encoding": "jsonParsed",
-                                                       "filters": [{"memcmp": {"offset": 0, "bytes": mint}}]}],
-                         tries=2)
+_B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+# SPL token account layout (Token and Token-2022 share the first 165 bytes):
+# mint 0..32, owner 32..64, amount 64..72 (u64 LE), delegate COption 72..76 tag + 76..108 key,
+# state 108, isNative 109..121, delegatedAmount 121..129. We ask only for bytes 32..129.
+SLICE = {"offset": 32, "length": 97}
+GPA_MAX_BYTES = 24_000_000   # bigger answers are refused instead of loaded (the container has 400 MB)
+
+
+def b58(raw: bytes) -> str:
+    n = int.from_bytes(raw, "big")
+    out = ""
+    while n:
+        n, r = divmod(n, 58)
+        out = _B58[r] + out
+    pad = len(raw) - len(raw.lstrip(b"\0"))
+    return "1" * pad + out
+
+
+def decode_slice(data_b64: str) -> dict | None:
+    """Bytes 32..129 of a token account -> the same keys jsonParsed gives (owner, tokenAmount.amount,
+    delegate, delegatedAmount.amount), so desk/fields.py reads both shapes."""
+    import base64
+    try:
+        raw = base64.b64decode(data_b64)
+    except ValueError:
+        return None
+    if len(raw) < 40:
+        return None
+    info: dict = {"owner": b58(raw[0:32]), "tokenAmount": {"amount": str(int.from_bytes(raw[32:40], "little"))}}
+    if len(raw) >= 97 and int.from_bytes(raw[40:44], "little") == 1:
+        info["delegate"] = b58(raw[44:76])
+        info["delegatedAmount"] = {"amount": str(int.from_bytes(raw[89:97], "little"))}
+    return info
+
+
+async def _gpa_sliced(prog: str, mint: str) -> list:
+    """getProgramAccounts with a 97-byte data slice, streamed with a hard size cap."""
+    import json
+    body = {"jsonrpc": "2.0", "id": next(_ids), "method": "getProgramAccounts",
+            "params": [prog, {"encoding": "base64", "dataSlice": SLICE,
+                              "filters": [{"memcmp": {"offset": 0, "bytes": mint}}]}]}
+    last = ""
+    for attempt in range(2):
+        try:
+            async with _c().stream("POST", url(), json=body) as r:
+                if r.status_code == 429:
+                    last = "429"
+                    await asyncio.sleep(5)
+                    continue
+                buf = bytearray()
+                async for chunk in r.aiter_bytes():
+                    buf += chunk
+                    if len(buf) > GPA_MAX_BYTES:
+                        raise RpcRefused(f"getProgramAccounts {prog[:6]}: answer over "
+                                         f"{GPA_MAX_BYTES // 1_000_000} MB, too many holder accounts")
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            last = type(e).__name__
+            await asyncio.sleep(2 ** attempt)
+            continue
+        try:
+            d = json.loads(bytes(buf))
+        except ValueError:
+            last = f"HTTP {r.status_code}"
+            continue
+        del buf
+        err = F.rpc_error(d) if isinstance(d, dict) else None
+        if err:
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            raise RpcRefused(f"getProgramAccounts: {msg}")
+        res = F.rpc_result(d) if isinstance(d, dict) else None
         if not isinstance(res, list):
             raise RpcRefused(f"getProgramAccounts {prog[:6]}: unexpected answer")
-        for it in res:
-            info = F.gpa_info(it)
+        return res
+    raise RpcError(f"getProgramAccounts: {last}")
+
+
+async def mint_token_accounts(mint: str) -> list[dict]:
+    """Every token account of the mint on Token AND Token-2022 (memcmp offset 0 = mint).
+    Returns parsed-like infos plus "pubkey". Raises RpcRefused when the RPC will not serve it."""
+    out: list[dict] = []
+    for prog in (TOKEN_PROGRAM, TOKEN_2022_PROGRAM):
+        for it in await _gpa_sliced(prog, mint):
+            acc = F.gpa_account(it) or {}
+            data = acc.get("data") if isinstance(acc, dict) else None
+            b64 = data[0] if isinstance(data, list) and data else None
+            info = decode_slice(b64) if isinstance(b64, str) else None
             if info is not None:
                 out.append({**info, "pubkey": F.gpa_pubkey(it)})
     return out
