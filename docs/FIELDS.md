@@ -64,6 +64,24 @@ Samples: `rugcheck_report.json` (fresh graduate), `rugcheck_report_old.json` (GD
 | market liquidity | `rc_market_liquidity_usd` | `markets[].lp.baseUSD + lp.quoteUSD` |
 | total liquidity | `rc_total_market_liquidity` | `totalMarketLiquidity` |
 
+Creator's other launches (layer 9 Solana), samples `rugcheck_report_creator_tokens.json` (creator B92d..P9kF,
+50 items, 20 in the last 7 days, 42 of 48 day-old coins under $5k) and `rugcheck_report_creator_tokens_old.json`
+(creator D5D4..WnMx, 44 items, 0 in 7 days, 40 under $5k). Not in RugCheck's swagger; read off live reports.
+
+| field | accessor | raw key |
+|---|---|---|
+| other launches | `rc_creator_tokens` | `creatorTokens` (list, newest first, current mint NOT included, max 50 seen; `null` = none) |
+| mint | `rc_ct_mint` | `creatorTokens[].mint` |
+| market cap USD | `rc_ct_market_cap` | `creatorTokens[].marketCap` (float USD: Gz7H.. 41,401 vs DexScreener 48,306 minutes later) |
+| created | `rc_ct_created_at` | `creatorTokens[].createdAt` (ISO with nanoseconds, cut to microseconds) |
+
+`null` vs missing: 23 fresh pump reports on 2026-11-02 all had the key; first-time creators had `null`
+(Go nil slice), creators with history had a list. Missing key = no data. pump.fun's own
+`frontend-api-v3.pump.fun/coins/user-created-coins/<creator>` answered 403 (Cloudflare challenge) from this
+machine on every try, so it is not used. Dead = market cap under `auditor.dev_dead_mcap_usd` ($5,000): a pump.fun
+coin starts at about 28 SOL = $2,630 at SOL $93.91 (2026-11-02), so under $5k means it never got to 2x its
+launch value; the two serial creators above have median previous market caps of $205 and $33.
+
 GD52 has 4 markets: pump_fun_amm 100% locked, orca 0, meteoraDlmm 0, meteora_damm_v2 0. That is why
 layer 5 must use the market whose `pubkey` = the scanner pool, never "any market".
 
@@ -122,13 +140,20 @@ PumpSwap program `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` (seen in sample) 
 | clusters | `ghm_top_cluster`, `ghm_cluster_holders/wallets/share`, `ghm_cluster_count` | `summary.topCluster.holderCount/.walletCount/.share`, `summary.clusterCount` | `grokhood_token_map.json` |
 | alerts | `gha_items`, `gha_level`, `gha_insider_sold_pct` | `items[].level` (warn/danger), `items[].insiderSoldPct` | `grokhood_token_alerts_warn.json` (Oak: `grokhood_token_alerts.json` = empty) |
 | chart | `ghc_last_price`, `ghc_usd_per_quote`, `ghc_phase` | `last.price`, `usdPerQuote` (null), `phase` | `grokhood_token_chart.json` |
+| X activity | `ghx_tracked`, `ghx_level`, `ghx_score`, `ghx_reasons` | `/x-activity`: `tracked` (bool), `level` organic/mixed/spam/none, `score` 0..100 (null when none), `reasons[]` | `grokhood_token_x_activity.json` (Oak: organic 95, 1 post) |
+| X counts | `ghx_posts`, `ghx_authors`, `ghx_rug_promoters`, `ghx_graded_at` | `counts.posts`, `counts.authors`, `counts.rugPromoters`, `gradedAt` | same; `_noposts.json` (tracked, none, 0 posts), `_untracked.json` (`tracked:false`) |
 | SSE | `ghs_address`, `ghs_score`, `ghs_flags` | `event: launch` (Launch item), `event: score` `{address,score,flags}`, `event: dump` (alert) | `grokhood_stream.txt` |
 
 Endpoints: `/v1/launches?limit=&cursor=`, `/v1/tokens/:a`, `/v1/tokens/:a/holders`, `/v1/tokens/:a/map`,
-`/v1/tokens/:a/alerts`, `/v1/tokens/:a/chart`, `/v1/scoring`, SSE `/v1/stream` (pings every 15 s).
+`/v1/tokens/:a/alerts`, `/v1/tokens/:a/chart`, `/v1/tokens/:a/x-activity`, `/v1/scoring`, SSE `/v1/stream` (pings every 15 s).
 `/map` and `/alerts` are per token, there is no global `/map` or `/alerts`.
 There is no "graduation" SSE event: graduation shows as flag "graduated" on a `score` event and as
 `graduatedAt` on launches, so the scanner also polls `/v1/launches` every scanner.poll_s.
+X activity levels (GROKHOOD backend `src/shill/grade.ts`): score >= 70 organic, >= 40 mixed, else spam; none =
+no graded posts. GROKHOOD's own Safety Score signal calls spam "spam-like or coordinated promotion" (penalty 15)
+and mixed "part of it looks coordinated" (penalty 5). Live on 2026-11-02, the latest 300 launches had 16 organic,
+26 none (tracked, no posts), 258 not tracked; no live spam/mixed sample, so those two follow the backend source.
+`/x-activity` may run an on-demand X search server side (own TTL and budget); 404 = unknown token.
 Only 6 of the latest 1500 launches had graduated (2026-11-02).
 Display-only, not verified (ring/knownOperator were null in every sample): the `id` inside a non-null
 `ring` / `knownOperator` object; the layer decision only uses null vs not null.

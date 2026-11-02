@@ -1,4 +1,4 @@
-"""Auditor: takes every scanner pass apart, 8 layers, stops at the first red.
+"""Auditor: takes every scanner pass apart, 9 layers (8 when auditor.layer9 is off), stops at the first red.
 
 Solana (RPC + RugCheck + DexScreener):
   1 Mint authority renounced          (RPC getAccountInfo jsonParsed)
@@ -11,8 +11,15 @@ Solana (RPC + RugCheck + DexScreener):
   7 Bundled: biggest connected component of holders in the RugCheck insiders graph < auditor.max_bundled
   8 Delegations: getProgramAccounts on Token AND Token-2022 (memcmp offset 0 = mint), no delegate on more
     than auditor.max_delegated_accounts holder accounts
+  9 Dev history: RugCheck report creatorTokens (the creator's other pump.fun launches). Red when the creator
+    launched >= auditor.dev_max_launches_7d coins in the last 7 days, or when at least DEV_DEAD_MIN of its
+    coins older than DEV_DEAD_AGE_S are judged and more than auditor.dev_max_dead_pct % of them are dead
+    (marketCap < auditor.dev_dead_mcap_usd)
 Robinhood (GROKHOOD): 1 Safety Score, 2 Rings, 3 Known operator, 4 Dev wallet, 5 Top 10,
-  6 Exempt/snipe wallets, 7 Bundled clusters (/map), 8 Dump alerts.
+  6 Exempt/snipe wallets, 7 Bundled clusters (/map), 8 Dump alerts,
+  9 X activity (/x-activity): red when the level is worse than auditor.max_shill_level
+    (organic < mixed < spam); tracked with no posts = ok "No X posts"; not tracked = ok "Not tracked on X" (neutral).
+Layer 9 runs only when auditor.layer9 is on.
 
 A layer that cannot get data is retried auditor.retries times, 2 s apart, then goes red "no data: <layer>".
 Layers after the first red stay pass=None ("not checked").
@@ -35,6 +42,11 @@ SOL_LAYERS = ["Mint authority", "Freeze authority", "Dev wallet", "Top 10 holder
               "Pool age", "Bundled wallets", "Delegations"]
 RH_LAYERS = ["Safety Score", "Rings", "Known operator", "Dev wallet", "Top 10 holders",
              "Exempt/snipe wallets", "Bundled clusters", "Dump alerts"]
+SOL_LAYER9 = "Dev history"
+RH_LAYER9 = "X activity"
+SHILL_RANK = {"organic": 0, "mixed": 1, "spam": 2}
+DEV_DEAD_MIN = 3            # judged coins needed before the dead share counts
+DEV_DEAD_AGE_S = 86400.0    # a coin younger than a day is not judged dead or alive
 RETRY_GAP_S = 2.0
 _sleep = asyncio.sleep
 
@@ -83,7 +95,7 @@ async def src_pair(chain: str, mint: str, pool: str | None) -> dict | None:
 async def src_gh(kind: str, addr: str) -> dict | None:
     from desk.sources import grokhood
     fn = {"token": grokhood.token, "holders": grokhood.holders, "map": grokhood.token_map,
-          "alerts": grokhood.alerts}[kind]
+          "alerts": grokhood.alerts, "x": grokhood.x_activity}[kind]
     return await fn(addr)
 
 
@@ -132,6 +144,37 @@ def delegation_groups(accounts: list[dict]) -> dict[str, int]:
 
 def holder_count(accounts: list[dict]) -> int:
     return len({F.ta_owner(a) for a in accounts if (F.ta_amount(a) or 0) > 0 and F.ta_owner(a)})
+
+
+def _ts(iso_s: str | None) -> float | None:
+    if not iso_s:
+        return None
+    try:
+        return datetime.fromisoformat(iso_s.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        # RugCheck sends nanoseconds (2026-11-02T09:15:15.53560051Z): cut to microseconds
+        head, _, frac = iso_s.rstrip("Z").partition(".")
+        try:
+            return datetime.fromisoformat(f"{head}.{(frac + '000000')[:6]}+00:00").timestamp()
+        except ValueError:
+            return None
+
+
+def dev_history(tokens: list[dict], now: float) -> dict:
+    """Creator's other launches -> {total, last7d, judged, dead}. Dead = marketCap under
+    auditor.dev_dead_mcap_usd; only coins at least DEV_DEAD_AGE_S old with a market cap are judged."""
+    floor = float(config.get("auditor.dev_dead_mcap_usd"))
+    last7d = judged = dead = 0
+    for t in tokens:
+        ts = _ts(F.rc_ct_created_at(t))
+        if ts is not None and now - ts < 7 * 86400:
+            last7d += 1
+        mc = F.rc_ct_market_cap(t)
+        if mc is None or ts is None or now - ts < DEV_DEAD_AGE_S:
+            continue
+        judged += 1
+        dead += mc < floor
+    return {"total": len(tokens), "last7d": last7d, "judged": judged, "dead": dead}
 
 
 def short(a: str | None) -> str:
@@ -300,6 +343,23 @@ async def sol_delegations(c: Ctx):
     return (n <= mx, v, "rpc", f"one delegate on {n} holder accounts")
 
 
+async def sol_dev_history(c: Ctx):
+    rep = await c.report()
+    if not F.rc_creator(rep) or not F.rc_has_key(rep, "creatorTokens"):
+        raise NoData("creatorTokens")
+    h = dev_history(F.rc_creator_tokens(rep), db.now())
+    if h["total"] == 0:
+        return (True, "No previous launches", "rugcheck", None)
+    mx = int(config.get("auditor.dev_max_launches_7d"))
+    if h["last7d"] >= mx:
+        return (False, f"{h['last7d']} launches in 7d", "rugcheck", f"dev launched {h['last7d']} coins in 7d")
+    total = f"{h['total']}+" if h["total"] >= 50 else str(h["total"])
+    v = f"{total} launch{'es' if h['total'] != 1 else ''} · {h['dead']} dead"
+    if h["judged"] >= DEV_DEAD_MIN and 100.0 * h["dead"] / h["judged"] > float(config.get("auditor.dev_max_dead_pct")):
+        return (False, v, "rugcheck", f"dev: {h['dead']} of {h['judged']} coins dead")
+    return (True, v, "rugcheck", None)
+
+
 SOL_CHECKS: list[Check] = [sol_mint, sol_freeze, sol_dev, sol_top10, sol_lp, sol_age, sol_bundled, sol_delegations]
 
 
@@ -404,7 +464,44 @@ async def rh_dumps(c: Ctx):
     return (True, "no dump alerts", "grokhood", None)
 
 
+async def rh_x_activity(c: Ctx):
+    x = await c.gh("x")
+    lv = F.ghx_level(x)
+    if lv == "none":
+        if F.ghx_tracked(x) is True and (F.ghx_posts(x) or 0) == 0:
+            return (True, "No X posts", "grokhood", None)
+        if F.ghx_tracked(x) is False:
+            # GROKHOOD only tracks X for a subset of launches (42 of 300 on 2026-11-02); an untracked
+            # token is a known state, not a failed read, so it passes with a neutral value.
+            return (True, "Not tracked on X", "grokhood", None)
+        raise NoData("x activity: not tracked")
+    if lv not in SHILL_RANK:
+        raise NoData(f"x activity level {lv!r}")
+    posts, authors = F.ghx_posts(x) or 0, F.ghx_authors(x) or 0
+    if SHILL_RANK[lv] > SHILL_RANK[str(config.get("auditor.max_shill_level"))]:
+        label = "Coordinated shill" if lv == "spam" else "Mixed shill"
+        return (False, f"{label} · {authors} account{'s' if authors != 1 else ''}", "grokhood",
+                f"{label.lower()} on X")
+    return (True, f"{lv.capitalize()} · {posts} post{'s' if posts != 1 else ''}", "grokhood", None)
+
+
 RH_CHECKS: list[Check] = [rh_score, rh_rings, rh_operator, rh_dev, rh_top10, rh_exempt, rh_clusters, rh_dumps]
+
+
+def plan(chain: str) -> tuple[list[str], list[Check]]:
+    """Layer names and checks for a chain, in order. Layer 9 last, only when auditor.layer9 is on."""
+    if chain == "robinhood":
+        names, checks, n9, c9 = list(RH_LAYERS), list(RH_CHECKS), RH_LAYER9, rh_x_activity
+    else:
+        names, checks, n9, c9 = list(SOL_LAYERS), list(SOL_CHECKS), SOL_LAYER9, sol_dev_history
+    if config.get("auditor.layer9"):
+        names.append(n9)
+        checks.append(c9)
+    return names, checks
+
+
+def layer_count(chain: str = "solana") -> int:
+    return len(plan(chain)[0])
 
 
 # ---- engine ------------------------------------------------------------------------
@@ -443,14 +540,14 @@ def _merge_extra(mint: str, add: dict) -> None:
 
 
 async def audit(scan: dict) -> dict:
-    """Run the 8 layers for one scanner message. Stores, emits, returns the auditor JSON."""
+    """Run the layers for one scanner message. Stores, emits, returns the auditor JSON."""
     c = Ctx(scan)
     mint, chain = c.mint, c.chain
     name = scan.get("name") or scan.get("symbol") or c.coin.get("name") or mint[:6]
-    names = RH_LAYERS if chain == "robinhood" else SOL_LAYERS
-    checks = RH_CHECKS if chain == "robinhood" else SOL_CHECKS
+    names, checks = plan(chain)
     layers = [{"n": i + 1, "name": n, "pass": None, "value": "not checked",
-               "source": "grokhood" if chain == "robinhood" else "rpc"} for i, n in enumerate(names)]
+               "source": "grokhood" if chain == "robinhood" else "rugcheck" if n == SOL_LAYER9 else "rpc"}
+              for i, n in enumerate(names)]
     reason: str | None = None
     ts0 = db.now()
     if not config.get("auditor.enabled"):
@@ -496,14 +593,14 @@ async def audit(scan: dict) -> dict:
         db.upsert_coin({"mint": mint, "holders": int(holders)})
     _merge_extra(mint, {"bundled": out["bundled"], "safetyScore": out["safetyScore"]})
     db.kv_set(f"audit:{mint}", out)
-    last = (f"{out['layersChecked']}/8 → Executor" if reason is None else
+    last = (f"{out['layersChecked']}/{len(layers)} → Executor" if reason is None else
             "audit off → Analyst" if reason == "audit off" else reason)
     _card(mint, name, layers, last)
     bus.emit("audit", out)
     if not passed:
         db.add_activity("rejected", mint, "auditor", f"Rejected {name}", f"Auditor · {reason}", "Skipped", "",
                         str(config.get("desk.mode")))
-    log.info("%s %s %s", "PASS" if passed else "REJECT", name, reason or f"{out['layersChecked']}/8")
+    log.info("%s %s %s", "PASS" if passed else "REJECT", name, reason or f"{out['layersChecked']}/{len(layers)}")
     return out
 
 

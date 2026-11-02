@@ -239,9 +239,18 @@ def enter(mint: str, chain: str, t0: float, **kw: Any) -> bool:
     return True
 
 
+# Quote tokens sometimes show up as the "mint" of a migration message; they are not coins to scan
+# (and a holder scan of USDC kills the RPC).
+QUOTE_MINTS = {
+    "So11111111111111111111111111111111111111112",   # wSOL
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
+}
+
+
 async def on_migration(msg: dict) -> None:
     mint = F.pp_mint(msg)
-    if not mint or not config.get("scanner.solana"):
+    if not mint or not config.get("scanner.solana") or mint in QUOTE_MINTS:
         return
     if not enter(mint, "solana", db.now(), sig=F.pp_signature(msg)):
         return

@@ -39,7 +39,7 @@ def test_no_free_stack():
 
 def _msg(mint="Q", liq=40_000, price=0.01):
     return {"scan": {"chain": "solana", "mint": mint, "name": "Quux", "symbol": "QX", "liquidityUsd": liq},
-            "audit": {"layers": [{"n": i, "pass": True} for i in range(1, 9)]},
+            "audit": {"layers": [{"n": i, "pass": True} for i in range(1, 10)]},
             "verdict": {"mint": mint, "score": 74}, "market": {"priceUsd": price}}
 
 
@@ -51,7 +51,7 @@ def test_paper_signal_push_and_fill(fake_market, pushes, monkeypatch):
     assert r["status"] == "bought" and r["size"] == 80
     p = pushes[0]
     assert p["text"] == ("PAPER · Buy Quux · $80.00 · 8% of stack\n"
-                         "Auditor 8/8 · Analyst 74 · stop -6% · trail 12%")
+                         "Auditor 9/9 · Analyst 74 · stop -6% · trail 12%")
     assert p["buttons"][0][0] == "Buy on FOMO" and "r=ref1" in p["buttons"][0][1]
     assert p["buttons"][1] == ("Bought", f"cb:bought:{r['signal_id']}")
     assert p["buttons"][2] == ("Skip", f"cb:skip:{r['signal_id']}")

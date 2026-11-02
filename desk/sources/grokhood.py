@@ -1,6 +1,6 @@
 """GROKHOOD API client (Robinhood Chain Pons launches). Base from config desk.grokhood_api.
 
-REST: /v1/launches, /v1/tokens/:a, /holders, /map, /alerts, /chart, /v1/scoring.
+REST: /v1/launches, /v1/tokens/:a, /holders, /map, /alerts, /chart, /x-activity, /v1/scoring.
 SSE: /v1/stream events launch, score, dump (also insiders, prelaunch, operator, x_activity; ignored
 by the caller unless wanted). Reconnects with backoff 1,2,4..60 s, and when silent for 60 s
 (the server pings every 15 s).
@@ -59,6 +59,11 @@ async def token_map(addr: str) -> dict | None:
 
 async def alerts(addr: str) -> dict | None:
     return await _get(f"/v1/tokens/{addr}/alerts")
+
+
+async def x_activity(addr: str) -> dict | None:
+    """X promotion grade (organic / mixed / spam / none). May run an on-demand X search server-side."""
+    return await _get(f"/v1/tokens/{addr}/x-activity")
 
 
 async def chart(addr: str) -> dict | None:

@@ -1,4 +1,4 @@
-"""Auditor: layer order, stop at first red, bundling components, delegation grouping. No network."""
+"""Auditor: layer order, stop at first red, bundling components, delegation grouping, layer 9. No network."""
 from __future__ import annotations
 
 import json
@@ -10,6 +10,7 @@ import functools
 import pytest
 
 from desk import bus, config, db
+from desk import fields as F
 from desk.agents import auditor
 
 RAW = Path(__file__).resolve().parents[2] / "logs" / "raw"
@@ -42,7 +43,7 @@ def fakes(monkeypatch):
     st = {"mint": {"mintAuthority": None, "freezeAuthority": None, "supply": "1000000000000000", "decimals": 6},
           "bal": 0, "top10": {"pct": 12.0}, "graph": [],
           "report": {"creator": "Dev1", "markets": [{"pubkey": POOL, "lp": {"lpLockedPct": 100}}],
-                     "totalHolders": 500},
+                     "totalHolders": 500, "creatorTokens": None},
           "pair": {"pairAddress": POOL, "liquidity": {"usd": 48000.0}, "pairCreatedAt": (db.now() - 1800) * 1000},
           "accounts": [], "calls": []}
 
@@ -88,12 +89,12 @@ async def test_freeze_authority_red_at_layer_2(fakes):
     fakes["mint"]["freezeAuthority"] = "Frz1111111111111111111111111111111"
     res = await auditor.handle(scan())
     assert res["passed"] is False
-    assert [l["pass"] for l in res["layers"]] == [True, False, None, None, None, None, None, None]
+    assert [l["pass"] for l in res["layers"]] == [True, False, None, None, None, None, None, None, None]
     assert res["layersChecked"] == 2
     assert res["reason"] == "freeze authority set"
     assert all(l["value"] == "not checked" for l in res["layers"][2:])
     rows = db.q("SELECT layer, pass FROM audits WHERE mint=? ORDER BY layer", (MINT,))
-    assert [r["pass"] for r in rows] == [1, 0, None, None, None, None, None, None]
+    assert [r["pass"] for r in rows] == [1, 0, None, None, None, None, None, None, None]
     act = db.q("SELECT * FROM activity WHERE mint=?", (MINT,))
     assert act[0]["kind"] == "rejected" and act[0]["subtitle"] == "Auditor · freeze authority set"
     assert act[0]["value"] == "Skipped"
@@ -109,7 +110,7 @@ async def test_freeze_authority_red_at_layer_2(fakes):
 async def test_all_pass_goes_to_analyst(fakes):
     fakes["accounts"] = [{"owner": f"W{i}", "tokenAmount": {"amount": "10"}} for i in range(7)]
     res = await auditor.handle(scan())
-    assert res["passed"] is True and res["layersChecked"] == 8 and res["reason"] is None
+    assert res["passed"] is True and res["layersChecked"] == 9 and res["reason"] is None
     assert res["holders"] == 7 and res["bundled"] == 0
     msg = bus.analyst.get_nowait()
     assert msg["audit"]["mint"] == MINT and msg["scan"]["pool"] == POOL
@@ -149,7 +150,7 @@ async def test_audit_off_passes_through(fakes):
     setv("auditor.enabled", False)
     res = await auditor.handle(scan())
     assert res["passed"] is True and res["reason"] == "audit off"
-    assert all(l["pass"] is None for l in res["layers"]) and len(res["layers"]) == 8
+    assert all(l["pass"] is None for l in res["layers"]) and len(res["layers"]) == 9
     assert fakes["calls"] == []
     assert not bus.analyst.empty()
 
@@ -189,3 +190,155 @@ async def test_delegate_over_max_is_red(fakes):
     fakes["accounts"] = [{"owner": f"o{i}", "delegate": "Drain1111", "tokenAmount": {"amount": "1"}} for i in range(3)]
     res = await auditor.handle(scan())
     assert res["layers"][7]["pass"] is False and res["reason"] == "one delegate on 3 holder accounts"
+
+
+# ---- layer 9 -------------------------------------------------------------------------------------
+def iso_ago(s):
+    return auditor.iso(db.now() - s)
+
+
+@sync
+async def test_sol_dev_history_first_launch_ok(fakes):
+    res = await auditor.handle(scan())
+    l9 = res["layers"][8]
+    assert l9 == {"n": 9, "name": "Dev history", "pass": True, "value": "No previous launches", "source": "rugcheck"}
+    assert db.kv_get("auditor_card")["last"] == "9/9 → Executor"
+
+
+@sync
+async def test_sol_dev_history_serial_launcher_red(fakes):
+    fakes["report"]["creatorTokens"] = [{"mint": f"M{i}", "marketCap": 90000.0, "createdAt": iso_ago(3600 * (i + 1))}
+                                        for i in range(5)]
+    res = await auditor.handle(scan())
+    assert res["passed"] is False and res["layers"][8]["value"] == "5 launches in 7d"
+    assert res["reason"] == "dev launched 5 coins in 7d"
+
+
+@sync
+async def test_sol_dev_history_mostly_dead_red_and_ok(fakes):
+    old = 30 * 86400
+    fakes["report"]["creatorTokens"] = [{"mint": "A", "marketCap": 120.0, "createdAt": iso_ago(old)},
+                                        {"mint": "B", "marketCap": 33.0, "createdAt": iso_ago(old)},
+                                        {"mint": "C", "marketCap": 41000.0, "createdAt": iso_ago(old)}]
+    res = await auditor.handle(scan())
+    assert res["layers"][8]["pass"] is False and res["layers"][8]["value"] == "3 launches · 2 dead"
+    assert res["reason"] == "dev: 2 of 3 coins dead"
+
+    db.q("DELETE FROM activity")
+    fakes["report"]["creatorTokens"][0]["marketCap"] = 60000.0
+    res = await auditor.handle(scan())
+    assert res["passed"] is True and res["layers"][8]["value"] == "3 launches · 1 dead"
+
+
+@sync
+async def test_sol_dev_history_young_coins_not_judged(fakes):
+    # 2 dead-looking coins younger than a day: too early to call them dead
+    fakes["report"]["creatorTokens"] = [{"mint": "A", "marketCap": 100.0, "createdAt": iso_ago(600)},
+                                        {"mint": "B", "marketCap": 100.0, "createdAt": iso_ago(900)}]
+    res = await auditor.handle(scan())
+    assert res["passed"] is True and res["layers"][8]["value"] == "2 launches · 0 dead"
+
+
+@sync
+async def test_sol_dev_history_missing_key_is_no_data(fakes):
+    del fakes["report"]["creatorTokens"]
+    res = await auditor.handle(scan())
+    assert res["layers"][8]["pass"] is False and res["reason"] == "no data: dev history"
+
+
+@sync
+async def test_layer9_toggle_off(fakes):
+    setv("auditor.layer9", False)
+    del fakes["report"]["creatorTokens"]
+    res = await auditor.handle(scan())
+    assert res["passed"] is True and len(res["layers"]) == 8 and res["layersChecked"] == 8
+    assert auditor.layer_count("robinhood") == 8
+
+
+def test_dev_history_real_samples():
+    now = 1793624400.0  # 2026-11-02 13:00 UTC, when the samples were saved
+    rep = json.loads((RAW / "rugcheck_report_creator_tokens.json").read_text())
+    h = auditor.dev_history(F.rc_creator_tokens(rep), now)
+    assert h["total"] == 50 and h["last7d"] == 20 and h["judged"] == 48 and h["dead"] == 42
+    old = json.loads((RAW / "rugcheck_report_creator_tokens_old.json").read_text())
+    h = auditor.dev_history(F.rc_creator_tokens(old), now)
+    assert h["total"] == 44 and h["last7d"] == 0 and h["dead"] == 40
+    fresh = json.loads((RAW / "rugcheck_report.json").read_text())
+    assert F.rc_has_key(fresh, "creatorTokens") and F.rc_creator_tokens(fresh) == []
+
+
+RH = "0x6511c233790ec10f7d673c64dc82c3f941d57828"
+
+
+@pytest.fixture
+def rh(monkeypatch):
+    st = {"x": json.loads((RAW / "grokhood_token_x_activity.json").read_text()), "calls": 0}
+
+    async def ok(c):
+        return (True, "fine", "grokhood", None)
+
+    async def gh(kind, addr):
+        assert kind == "x"
+        st["calls"] += 1
+        return st["x"]
+
+    async def nosleep(s):
+        return None
+
+    monkeypatch.setattr(auditor, "RH_CHECKS", [ok] * 8)
+    monkeypatch.setattr(auditor, "src_gh", gh)
+    monkeypatch.setattr(auditor, "_sleep", nosleep)
+    db.upsert_coin({"mint": RH, "chain": "robinhood", "name": "Oak"})
+    return st
+
+
+def rh_scan():
+    return scan(chain="robinhood", mint=RH, name="Oak", pool=None)
+
+
+@sync
+async def test_rh_x_activity_organic_real_sample(rh):
+    res = await auditor.handle(rh_scan())
+    assert res["passed"] is True and res["layersChecked"] == 9
+    assert res["layers"][8] == {"n": 9, "name": "X activity", "pass": True, "value": "Organic · 1 post",
+                                "source": "grokhood"}
+
+
+@sync
+async def test_rh_x_activity_spam_red(rh):
+    rh["x"].update({"level": "spam", "score": 22})
+    rh["x"]["counts"].update({"posts": 31, "authors": 9})
+    res = await auditor.handle(rh_scan())
+    assert res["passed"] is False and res["layers"][8]["value"] == "Coordinated shill · 9 accounts"
+    assert res["reason"] == "coordinated shill on X"
+
+
+@sync
+async def test_rh_x_activity_mixed_follows_setting(rh):
+    rh["x"].update({"level": "mixed", "score": 55})
+    rh["x"]["counts"].update({"posts": 14, "authors": 6})
+    res = await auditor.handle(rh_scan())
+    assert res["passed"] is True and res["layers"][8]["value"] == "Mixed · 14 posts"
+    setv("auditor.max_shill_level", "organic")
+    res = await auditor.audit(rh_scan())
+    assert res["passed"] is False and res["layers"][8]["value"] == "Mixed shill · 6 accounts"
+
+
+@sync
+async def test_rh_x_activity_no_posts_ok(rh):
+    rh["x"] = json.loads((RAW / "grokhood_token_x_activity_noposts.json").read_text())
+    res = await auditor.handle(rh_scan())
+    assert res["passed"] is True and res["layers"][8]["value"] == "No X posts"
+
+
+@sync
+async def test_rh_x_activity_untracked_and_404_no_data(rh):
+    setv("auditor.retries", 1)
+    rh["x"] = json.loads((RAW / "grokhood_token_x_activity_untracked.json").read_text())
+    res = await auditor.handle(rh_scan())
+    # untracked is a known state from GROKHOOD, not a failed read: neutral pass
+    assert res["layers"][8]["value"] == "Not tracked on X" and res["layers"][8]["pass"] is True
+    db.q("DELETE FROM activity")
+    rh["x"] = None  # 404: request_json returns None
+    res = await auditor.handle(rh_scan())
+    assert res["passed"] is False and res["reason"] == "no data: x activity"

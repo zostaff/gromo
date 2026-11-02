@@ -40,10 +40,23 @@ auditor JSON = {"agent":"auditor","mint":str,"chain":str,"ts":iso,"passed":bool,
  "holders":int|None,"reason":str|None, "bundled":int|None, "safetyScore":int|None}
 ```
 pass None = "not checked" (grey). Layers emitted live: `bus.emit("audit_layer", {"mint","n","name","pass","value"})`.
-Solana: the 8 layers of the brief (mint, freeze, dev, top10, LP, pool age, bundled, delegations).
-Robinhood: 8 layers from GROKHOOD: 1 Safety Score >= auditor.rh_min_score, 2 Rings (none), 3 Known operator
+9 layers per chain, in this order, stop at the first red. Layer 9 runs only when `auditor.layer9` is on
+(default on); off = 8 layers and the shield reads "8/8". The shield everywhere ("9/9" in the push text, API,
+auditor card) is passed layers / layers in that audit, never a hardcoded 8.
+Solana: 1 Mint authority, 2 Freeze authority, 3 Dev wallet, 4 Top 10 holders, 5 LP locked, 6 Pool age,
+7 Bundled wallets, 8 Delegations, 9 Dev history (RugCheck report `creatorTokens`, the creator's other
+pump.fun launches, no extra call: same report as layers 3/5). Red when the creator launched
+>= auditor.dev_max_launches_7d (5) coins in the last 7 days ("41 launches in 7d"), or when at least 3 of its
+coins older than 1 day are judged and more than auditor.dev_max_dead_pct (50) % of them are dead (marketCap
+< auditor.dev_dead_mcap_usd, $5,000). Ok: "No previous launches" or "3 launches · 0 dead" ("50+" when
+RugCheck's list of 50 is full). `creatorTokens` key missing = no data.
+Robinhood: 9 layers from GROKHOOD: 1 Safety Score >= auditor.rh_min_score, 2 Rings (none), 3 Known operator
 (none), 4 Dev wallet (deployer share/sold), 5 Top 10 holders, 6 Exempt/snipe wallets, 7 Bundled/clusters
-(top cluster from /map), 8 Dump alerts (none at warn/danger).
+(top cluster from /map), 8 Dump alerts (none at warn/danger), 9 X activity (`/v1/tokens/:a/x-activity`):
+red when the level is worse than auditor.max_shill_level (default "mixed": spam is red "Coordinated shill ·
+9 accounts"; set "organic" to also refuse mixed). Ok "Organic · 14 posts" / "Mixed · 14 posts".
+Tracked with no posts ("No X posts naming this token were found yet.") = ok "No X posts".
+Not tracked (`tracked:false`) or 404 = red "no data: x activity" after the retries.
 
 Analyst -> `bus.executor`: `{"scan":..., "audit":..., "verdict": <analyst JSON>}`
 ```
@@ -77,7 +90,7 @@ Response shapes (the app reads exactly these):
 ```
 Agent `card` payloads:
 - scanner: `{"pools":int,"feed":[{"name","symbol","mint","chain","verdict":"pass|kill","reason","liq"}] (last 6)}`
-- auditor: `{"takenApart":int,"rejected":int,"current":{"mint","name","layers":[{"n","pass"}]},"last":"8/8 → Executor|<reason>"}`
+- auditor: `{"takenApart":int,"rejected":int,"current":{"mint","name","layers":[{"n","pass"}]},"last":"9/9 → Executor|<reason>"}`
 - analyst: `{"scoring":{"mint","name","score":int,"passed":bool}|null,"scored":int,"mode":"grok|rules"}`
 - executor: `{"trades":int,"lastSize":float|null,"stackPct":float,"state":"idle|executing|filled","progress":0-100,"name":str|null}`
 - risk: `{"open":int,"guarding":bool,"last":"Trailed out|Stopped|Timed out|null","stopPct":f,"trailPct":f}`

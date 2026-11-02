@@ -245,7 +245,7 @@ def shield(a: dict | None) -> str | None:
     if not a or not a.get("layers"):
         return None
     ok = sum(1 for l in a["layers"] if l.get("pass") is True)
-    return f"{ok}/{max(8, len(a['layers']))}"
+    return f"{ok}/{len(a['layers'])}"
 
 
 def candles(mint: str, since: float) -> list[list]:

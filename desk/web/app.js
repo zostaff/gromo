@@ -3,6 +3,8 @@
    generator at the bottom of this file, shows a grey DEMO pill, and never talks to the backend. */
 (function () {
   'use strict';
+  // Auditor layer count: 9 by default, follows what the API returns (8 when layer 9 is off).
+  var NL = 9;
 
   /* ================= boot: token, mode ================= */
   const qs = new URLSearchParams(location.search);
@@ -67,6 +69,7 @@
     search: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg>',
     bell: '<svg viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg>',
     back: '<svg viewBox="0 0 24 24"><path d="M15 4.5 7.5 12 15 19.5"/></svg>',
+    share: '<svg viewBox="0 0 24 24"><path d="M12 3.5v11M8 7.2l4-3.9 4 3.9"/><path d="M8.5 10.5H6.8A1.3 1.3 0 0 0 5.5 11.8v7.4a1.3 1.3 0 0 0 1.3 1.3h10.4a1.3 1.3 0 0 0 1.3-1.3v-7.4a1.3 1.3 0 0 0-1.3-1.3h-1.7"/></svg>',
     ext: '<svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4"/></svg>',
     check: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.4 3 3 6-6.6"/></svg>',
     x: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg>',
@@ -282,6 +285,12 @@
     return `<header class="nav"><button class="back" data-back>${I.back}<span>Back</span></button><div class="nav-center">${esc(title || '')}</div><div class="grow"></div></header><div class="offline"></div>`;
   }
   function bindBack(root) { $$('[data-back]', root).forEach((b) => b.addEventListener('click', back)); }
+  // Share card button in a pushed page's nav bar (cards are drawn by share.js)
+  function navShare(root, kind, arg) {
+    const h = $('header.nav', root); if (!h || $('[data-share]', h) || !window.Share) return;
+    const b = el(`<button class="iconbtn" data-share aria-label="Share" style="margin-right:2px">${I.share}</button>`);
+    b.onclick = () => window.Share.open(kind, arg); h.appendChild(b);
+  }
 
   function actRow(r, fresh) {
     const kind = r.kind;
@@ -341,9 +350,9 @@
       const vals = [...layers.values()];
       const anyFail = vals.some((p) => p === false);
       const auditOff = c.last && /audit off/i.test(c.last) && vals.every((p) => p == null);
-      const reading = !!cur && !anyFail && !auditOff && (layers.size < 8 || vals.some((p) => p == null));
-      let firstOpen = 0; for (let n = 1; n <= 8; n++) if (!layers.has(n) || layers.get(n) == null) { firstOpen = n; break; }
-      const strips = Array.from({ length: 8 }, (_, i) => {
+      const reading = !!cur && !anyFail && !auditOff && (layers.size < NL || vals.some((p) => p == null));
+      let firstOpen = 0; for (let n = 1; n <= NL; n++) if (!layers.has(n) || layers.get(n) == null) { firstOpen = n; break; }
+      const strips = Array.from({ length: NL }, (_, i) => {
         const n = i + 1; const p = layers.has(n) ? layers.get(n) : undefined;
         const cls = p === true ? 'ok' : p === false ? 'bad' : reading && n === firstOpen ? 'reading' : !reading && p === null ? 'na' : '';
         return `<div class="strip ${cls}">${p === true ? '✓' : p === false ? '✕' : n}</div>`;
@@ -357,7 +366,7 @@
       body.innerHTML = `<div class="abig" style="color:#4da3ff">${intf(c.takenApart)}<small>taken apart</small></div>
         <div class="muted" style="font-size:15px;margin-top:2px">${cur ? 'Now: ' + esc(cur.name) : esc(a.subtitle || '')}</div>
         <div class="abody"><div class="strips">${strips}</div><div class="aline">${line}</div>
-        <div class="afoot"><span>${intf(c.rejected)} rejected</span><span>8 parts per coin</span></div></div>`;
+        <div class="afoot"><span>${intf(c.rejected)} rejected</span><span>${NL} parts per coin</span></div></div>`;
       if (cur) body.querySelector('.strips').onclick = () => go('#/audit/' + encodeURIComponent(cur.mint));
     },
     analyst(body, c, a, st) {
@@ -413,7 +422,8 @@
         <button class="iconbtn" data-bell aria-label="Notifications">${I.bell}<span class="dot" hidden></span></button>
       </header>
       <div class="offline"></div>
-      <div class="hero">
+      <div class="hero" style="position:relative">
+        <button class="iconbtn" data-share aria-label="Share tonight" style="position:absolute;bottom:-12px;right:calc(var(--g) + var(--sar) + 6px)">${I.share}</button>
         <div class="balance" data-bal>${skel('240px', 60)}</div>
         <div class="sub-row" data-sub>${skel('180px', 18)}</div>
       </div>
@@ -445,6 +455,7 @@
       $$('.dots i', root).forEach((d, k) => d.classList.toggle('on', k === i));
     }, { passive: true });
     $('[data-search]', root).onclick = openSearch;
+    $('[data-share]', root).onclick = () => window.Share && window.Share.open('night');
     $('[data-bell]', root).onclick = () => { S.unreadSeen = true; if (S.state) S.state.unread = 0; api('/api/read', { method: 'POST' }).catch(() => {}); go('#/activity'); };
 
     function paintHero(animate = true) {
@@ -677,6 +688,7 @@
         return;
       }
       $('.nav-center', root).textContent = c.name || '';
+      navShare(root, 'trade', { mint });
       const pos = c.position;
       const sh = c.shield;
       const shCls = !sh ? 'na' : /^8\/8/.test(sh) ? 'ok' : 'bad';
@@ -765,6 +777,7 @@
     function build() {
       const name = meta && meta.name ? meta.name : '';
       $('.nav-center', root).textContent = name ? `Auditor · ${name}` : 'Auditor';
+      navShare(root, 'audit', { mint });
       box.innerHTML = `
         <div class="verdict" data-v></div>
         <div class="stackbox"><svg viewBox="0 0 300 310" aria-hidden="true">
@@ -774,9 +787,9 @@
             <rect x="18" y="${Y0 - 21}" width="264" height="42" rx="10" fill="rgba(100,210,255,0.12)"/>
             <rect x="18" y="${Y0 + 4}" width="264" height="2" rx="1" fill="#64d2ff"/>
           </g></svg></div>
-        <div class="list layer-rows" data-rows>${Array.from({ length: 8 }, (_, i) => layerRow(i + 1)).join('')}</div>
+        <div class="list layer-rows" data-rows>${Array.from({ length: NL }, (_, i) => layerRow(i + 1)).join('')}</div>
         <div class="group-h">Auditor</div>
-        <div class="group"><div class="cell"><div class="cl">Take apart before buying<small>8 parts per coin, every coin</small></div><label class="switch"><input type="checkbox" data-en><i></i></label></div></div>
+        <div class="group"><div class="cell"><div class="cl">Take apart before buying<small>${NL} parts per coin, every coin</small></div><label class="switch"><input type="checkbox" data-en><i></i></label></div></div>
         <div class="group-f">Off means the desk buys without the 8 checks. Not advised.</div>`;
       built = true;
       bindToggle();
@@ -793,21 +806,21 @@
     }
     function defaultName(n) {
       const chain = meta && meta.chain;
-      const sol = ['Mint authority', 'Freeze authority', 'Dev wallet', 'Top 10 holders', 'LP locked', 'Pool age', 'Bundled wallets', 'Delegations'];
-      const rh = ['Safety Score', 'Rings', 'Known operator', 'Dev wallet', 'Top 10 holders', 'Exempt and snipe wallets', 'Bundled clusters', 'Dump alerts'];
+      const sol = ['Mint authority', 'Freeze authority', 'Dev wallet', 'Top 10 holders', 'LP locked', 'Pool age', 'Bundled wallets', 'Delegations', 'Dev history'];
+      const rh = ['Safety Score', 'Rings', 'Known operator', 'Dev wallet', 'Top 10 holders', 'Exempt and snipe wallets', 'Bundled clusters', 'Dump alerts', 'X activity'];
       return (chain === 'robinhood' ? rh : sol)[n - 1];
     }
     function paintVerdict() {
       const v = $('[data-v]', box); if (!v) return;
       const name = esc((meta && (meta.name || meta.symbol)) || 'this coin');
-      if (!done) { v.innerHTML = `<h1 style="color:var(--cyan)">Taking apart</h1><p>${name} · part ${Math.min(cursor, 8)} of 8</p>`; return; }
+      if (!done) { v.innerHTML = `<h1 style="color:var(--cyan)">Taking apart</h1><p>${name} · part ${Math.min(cursor, NL)} of ${NL}</p>`; return; }
       const failed = Object.values(L).filter((l) => l.pass === false);
       const checked = Object.values(L).filter((l) => l.pass === true).length;
       if (meta && meta.passed === false || failed.length) {
         const reason = (meta && meta.reason) || (failed[0] ? `${failed[0].name.toLowerCase()} ${failed[0].value}` : 'failed');
         v.innerHTML = `<h1 class="bad">Rejected · ${esc(reason)}</h1><p>The desk won't buy ${name}</p>`;
       } else {
-        v.innerHTML = `<h1 class="ok">Cleared · ${checked}/8 parts</h1><p>${name} goes to the Analyst</p>`;
+        v.innerHTML = `<h1 class="ok">Cleared · ${checked}/${NL} parts</h1><p>${name} goes to the Analyst</p>`;
       }
     }
     const beam = { y: 0, op: 0, raf: 0 };
@@ -847,13 +860,13 @@
         }, 150);
       }, 350);
     }
-    function finish() { done = true; setBeam(8, false); for (let n = 1; n <= 8; n++) { if (L[n]) reveal(n); paintRow(n); } paintVerdict(); }
+    function finish() { done = true; setBeam(NL, false); for (let n = 1; n <= NL; n++) { if (L[n]) reveal(n); paintRow(n); } paintVerdict(); }
     function finalized() { return meta && typeof meta.passed === 'boolean'; }
     function ingest(a) {
       meta = Object.assign(meta || {}, a);
       for (const l of a.layers || []) L[+l.n] = Object.assign({}, L[+l.n], l);
       if (S.layerLive[mint]) for (const [n, l] of Object.entries(S.layerLive[mint])) L[+n] = Object.assign({}, L[+n], l);
-      if (finalized()) for (let n = 1; n <= 8; n++) if (!L[n]) L[n] = { n, name: defaultName(n), pass: null, value: 'n/a' };
+      if (finalized()) for (let n = 1; n <= NL; n++) if (!L[n]) L[n] = { n, name: defaultName(n), pass: null, value: 'n/a' };
     }
     function paintCta() {
       let bar = $('.cta-bar', root);
@@ -892,6 +905,7 @@
           box.innerHTML = '<div class="empty" style="padding-top:80px"><div class="dash"></div><b>No coin taken apart yet</b>The Auditor has not opened this one</div>';
           paintCtaFromCoin(); return;
         }
+        if (a.layers.length) NL = Math.max(...a.layers.map((l) => l.n || 0), a.layers.length);
         ingest(a); build();
         if (reduced()) { cursor = 9; finish(); } else { paintVerdict(); later(step, 250); }
         api('/api/coin/' + encodeURIComponent(mint)).then((c) => { S.coin[mint] = c; paintCta(); }).catch(() => {});
@@ -1161,7 +1175,7 @@
         updatedAt: new Date().toISOString(), unread: st.unread, handle: st.handle,
         agents: [
           { name: 'scanner', status: agentStatus.scanner, count: st.counts.scanner, subtitle: 'pumpfun + Robinhood Chain', card: { pools: st.counts.scanner, feed: feed.slice(0, 6) } },
-          { name: 'auditor', status: agentStatus.auditor, count: st.counts.auditor, subtitle: '8 parts per coin', card: { takenApart: st.counts.auditor, rejected: 41, current: auditCur, last: auditLast } },
+          { name: 'auditor', status: agentStatus.auditor, count: st.counts.auditor, subtitle: NL + ' parts per coin', card: { takenApart: st.counts.auditor, rejected: 41, current: auditCur, last: auditLast } },
           { name: 'analyst', status: agentStatus.analyst, count: st.counts.analyst, subtitle: 'Judge: rules', card: { scoring: scoring, scored: st.counts.analyst, mode: 'rules' } },
           { name: 'executor', status: agentStatus.executor, count: st.counts.executor, subtitle: '8% of stack', card: Object.assign({ trades: st.counts.executor, stackPct: 8 }, exec) },
           { name: 'risk', status: agentStatus.risk, count: 1, subtitle: 'stop -6% · trail 12%', card: { open: 1, guarding: true, last: 'Trailed out', stopPct: 6, trailPct: 12 } },
@@ -1174,12 +1188,12 @@
     for (let i = 0; i < 6; i++) { const c = coins[Object.keys(coins)[(i * 5) % 16]]; const pass = i === 1 || i === 4; feed.push({ name: c.name, symbol: c.symbol, mint: c.mint, chain: c.chain, verdict: pass ? 'pass' : 'kill', reason: pass ? null : killReasons[i % killReasons.length], liq: c.liquidity }); }
     const NEWT = bySym.NEWT;
     let auditCur = { mint: NEWT.mint, name: NEWT.name, layers: [{ n: 1, pass: true }, { n: 2, pass: true }, { n: 3, pass: true }, { n: 4, pass: true }, { n: 5, pass: true }] };
-    let auditLast = '8/8 → Executor';
+    let auditLast = NL + '/' + NL + ' → Executor';
     let scoring = { mint: hc.mint, name: hc.name, score: 82, passed: true };
     let exec = { lastSize: hpos ? hpos.size : 93.46, state: 'executing', progress: 62, name: hc.symbol };
 
-    const SOL_L = [['Mint authority', 'Revoked', 'rpc'], ['Freeze authority', 'Revoked', 'rpc'], ['Dev wallet', '1.8%', 'rugcheck'], ['Top 10 holders', '18.4%', 'rpc'], ['LP locked', '100% burned', 'rugcheck'], ['Pool age', '26 min', 'rpc'], ['Bundled wallets', '2', 'rugcheck'], ['Delegations', '0 accounts', 'rpc']];
-    const RH_L = [['Safety Score', '82/100', 'grokhood'], ['Rings', 'None', 'grokhood'], ['Known operator', 'None', 'grokhood'], ['Dev wallet', '2.1%, not sold', 'grokhood'], ['Top 10 holders', '21%', 'grokhood'], ['Exempt and snipe wallets', '0', 'grokhood'], ['Bundled clusters', 'top cluster 3.2%', 'grokhood'], ['Dump alerts', 'None', 'grokhood']];
+    const SOL_L = [['Mint authority', 'Revoked', 'rpc'], ['Freeze authority', 'Revoked', 'rpc'], ['Dev wallet', '1.8%', 'rugcheck'], ['Top 10 holders', '18.4%', 'rpc'], ['LP locked', '100% burned', 'rugcheck'], ['Pool age', '26 min', 'rpc'], ['Bundled wallets', '2', 'rugcheck'], ['Delegations', '0 accounts', 'rpc'], ['Dev history', '2 launches · 0 dead', 'rugcheck']];
+    const RH_L = [['Safety Score', '82/100', 'grokhood'], ['Rings', 'None', 'grokhood'], ['Known operator', 'None', 'grokhood'], ['Dev wallet', '2.1%, not sold', 'grokhood'], ['Top 10 holders', '21%', 'grokhood'], ['Exempt and snipe wallets', '0', 'grokhood'], ['Bundled clusters', 'top cluster 3.2%', 'grokhood'], ['Dump alerts', 'None', 'grokhood'], ['X activity', 'Organic · 14 posts', 'grokhood']];
     function auditFor(c) {
       const base = (c.chain === 'robinhood' ? RH_L : SOL_L).map((l, i) => ({ n: i + 1, name: l[0], pass: true, value: l[1], source: l[2] }));
       let reason = null;
@@ -1188,7 +1202,7 @@
       if (c.symbol === 'RONIN') { base[0].pass = false; base[0].value = '41/100'; reason = 'Safety Score 41'; }
       // like the real Auditor: it stops at the first failed part, the rest stay "not checked"
       const fi = base.findIndex((l) => l.pass === false);
-      if (fi >= 0) for (let i = fi + 1; i < 8; i++) { base[i].pass = null; base[i].value = 'not checked'; }
+      if (fi >= 0) for (let i = fi + 1; i < base.length; i++) { base[i].pass = null; base[i].value = 'not checked'; }
       return { agent: 'auditor', mint: c.mint, chain: c.chain, ts: new Date(NOW - 3600e3).toISOString(), passed: !reason, layersChecked: base.filter((l) => l.pass !== null).length, layers: base, holders: c.holders, reason, bundled: 2, safetyScore: c.safetyScore || null, name: c.name, symbol: c.symbol, coinUrl: fomoUrl(c) };
     }
     function fomoUrl(c) { return `#/coin/${encodeURIComponent(c.mint)}`; } // demo only: real links come from the API (desk/links.py)
@@ -1268,7 +1282,7 @@
       if ((mm = p.match(/^\/api\/agents\/(\w+)\/decisions$/))) {
         if (empty) return { rows: [] };
         const n = mm[1]; const keys = Object.keys(coins);
-        const rows = Array.from({ length: 20 }, (_, i) => { const c = coins[keys[(i * 3 + n.length) % keys.length]]; const pass = (i + n.length) % 3 !== 0; return { ts: new Date(NOW - i * 9 * 60000).toISOString(), mint: c.mint, name: c.name, verdict: n === 'risk' ? (pass ? 'trail' : 'stop') : n === 'executor' ? 'filled' : pass ? 'pass' : n === 'scanner' ? 'kill' : 'reject', reason: n === 'scanner' ? (pass ? 'liq ' + compact(c.liquidity) : killReasons[i % 6]) : n === 'auditor' ? (pass ? '8/8 parts' : 'dev holds 31%') : n === 'analyst' ? (pass ? 'score 78' : 'chase 0.41') : n === 'executor' ? usd(70 + i) + ' · 8% of stack' : pass ? 'trailed out +18%' : '-6% stop', coinUrl: fomoUrl(c) }; });
+        const rows = Array.from({ length: 20 }, (_, i) => { const c = coins[keys[(i * 3 + n.length) % keys.length]]; const pass = (i + n.length) % 3 !== 0; return { ts: new Date(NOW - i * 9 * 60000).toISOString(), mint: c.mint, name: c.name, verdict: n === 'risk' ? (pass ? 'trail' : 'stop') : n === 'executor' ? 'filled' : pass ? 'pass' : n === 'scanner' ? 'kill' : 'reject', reason: n === 'scanner' ? (pass ? 'liq ' + compact(c.liquidity) : killReasons[i % 6]) : n === 'auditor' ? (pass ? NL + '/' + NL + ' parts' : 'dev holds 31%') : n === 'analyst' ? (pass ? 'score 78' : 'chase 0.41') : n === 'executor' ? usd(70 + i) + ' · 8% of stack' : pass ? 'trailed out +18%' : '-6% stop', coinUrl: fomoUrl(c) }; });
         return { rows };
       }
       if ((mm = p.match(/^\/api\/agents\/(\w+)\/(pause|resume)$/)) && m === 'POST') { agentStatus[mm[1]] = mm[2] === 'pause' ? 'paused' : 'running'; return { ok: true }; }
@@ -1300,7 +1314,7 @@
         auditCur = { mint: c.mint, name: c.name, layers: a.layers.slice(0, from - 1).map((l) => ({ n: l.n, pass: l.pass })) };
         let n = from;
         const tick = () => {
-          if (n > 8) { auditLast = a.passed ? '8/8 → Executor' : a.reason; st.counts.auditor++; emit('audit', a); setTimeout(() => runAudit(coins[keys[(7 + ai++) % keys.length]], 1), 5000); return; }
+          if (n > NL) { auditLast = a.passed ? NL + '/' + NL + ' → Executor' : a.reason; st.counts.auditor++; emit('audit', a); setTimeout(() => runAudit(coins[keys[(7 + ai++) % keys.length]], 1), 5000); return; }
           const l = a.layers[n - 1]; auditCur.layers.push({ n: l.n, pass: l.pass }); emit('audit_layer', { mint: c.mint, n: l.n, name: l.name, pass: l.pass, value: l.value }); n++; setTimeout(tick, 700);
         };
         setTimeout(tick, 900);
@@ -1318,6 +1332,7 @@
   if ('serviceWorker' in navigator && standalone() && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (!location.hash || location.hash === '#' || location.hash === '#/') history.replaceState(null, '', location.pathname + location.search + '#/home');
   route();
+  if (window.Share) window.Share.init({ api, S, DEMO, toast, coins: DEMO ? (s) => Demo.bySym[s] : null });
   if (!DEMO_STATE) startStream();
   if (DEMO) {
     window.__desk = { S, go };

@@ -164,7 +164,12 @@ async def handle(msg: dict, paper_bar: bool = True) -> dict:
     sid = db.insert("signals", {"mint": mint, "ts": db.now(), "price": price, "size_usd": size,
                                 "stack_pct": pct, "link": url, "mode": mode, "status": "sent", "reason": None})
     layers = audit.get("layers") or []
-    shield = f"{sum(1 for l in layers if l.get('pass') is True)}/{len(layers) or 8}"
+    if not layers:
+        from desk.agents import auditor
+        n_layers = auditor.layer_count(chain)
+    else:
+        n_layers = len(layers)
+    shield = f"{sum(1 for l in layers if l.get('pass') is True)}/{n_layers}"
     stop, trail = float(config.get("risk.stop_pct")), float(config.get("risk.trail_pct"))
     text = (f"{'PAPER · ' if mode == 'PAPER' else ''}Buy {name} · {_fmt_money(size)} · {pct:g}% of stack\n"
             f"Auditor {shield} · Analyst {verdict.get('score')} · stop -{stop:g}% · trail {trail:g}%")

@@ -43,6 +43,11 @@ S: dict[str, Spec] = {
     "auditor.max_delegated_accounts": Spec(10, 1, 1000, label="Max delegated accounts"),
     "auditor.retries": Spec(3, 0, 10, label="Retries"),
     "auditor.rh_min_score": Spec(70, 0, 100, label="Min GROKHOOD Safety Score"),
+    "auditor.layer9": Spec(True, choices=(True, False), label="Layer 9: X activity / Dev history"),
+    "auditor.max_shill_level": Spec("mixed", choices=("organic", "mixed"), label="RH: worst X promotion allowed"),
+    "auditor.dev_max_launches_7d": Spec(5, 1, 1000, label="SOL: max dev launches in 7d"),
+    "auditor.dev_dead_mcap_usd": Spec(5000, 0, 10_000_000, label="SOL: dead coin under market cap $"),
+    "auditor.dev_max_dead_pct": Spec(50, 0, 100, label="SOL: max dead share of dev coins %"),
     # analyst
     "analyst.mode": Spec("rules", choices=("grok", "rules"), label="Judge"),
     "analyst.min_alive_6h": Spec(0.70, 0, 1, label="Min alive 6h"),

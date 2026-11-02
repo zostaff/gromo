@@ -5,7 +5,7 @@ table field -> raw key -> sample file). A key that is not there returns None. Ne
 
 Sources: PumpPortal migration message, DexScreener /tokens/v1/{chain}/{addrs} pair,
 RugCheck /v1/tokens/{mint}/report and /insiders/graph, Solana RPC jsonParsed answers,
-GROKHOOD /v1/launches, /v1/tokens/:a, /holders, /map, /alerts, /chart, SSE /v1/stream.
+GROKHOOD /v1/launches, /v1/tokens/:a, /holders, /map, /alerts, /chart, /x-activity, SSE /v1/stream.
 """
 from __future__ import annotations
 
@@ -275,6 +275,28 @@ def rc_has_key(rep: dict, *path: str) -> bool:
             return False
         cur = cur[p]
     return True
+
+
+# creatorTokens (logs/raw/rugcheck_report_creator_tokens.json, creator B92d..P9kF): the creator's OTHER
+# pump.fun launches, newest first, current mint not included, at most 50 seen (B92d.. has 50 = capped).
+# Item: {"mint","marketCap" (USD float),"createdAt" (ISO)}. null = no other launches (RugCheck is Go: a nil
+# list serialises as null; every first-time creator in 23 fresh reports on 2026-11-02 had null). Key
+# missing = unknown (rc_has_key(rep, "creatorTokens") tells the two apart).
+def rc_creator_tokens(rep: dict) -> list[dict]:
+    return [t for t in _list(_get(rep, "creatorTokens")) if isinstance(t, dict)]
+
+
+def rc_ct_mint(t: dict) -> str | None:
+    return _get(t, "mint")
+
+
+def rc_ct_market_cap(t: dict) -> float | None:
+    """USD (B92d.. Gz7H: 41,401 here, DexScreener marketCap 48,306 minutes later)."""
+    return _f(_get(t, "marketCap"))
+
+
+def rc_ct_created_at(t: dict) -> str | None:
+    return _get(t, "createdAt")
 
 
 # ---- RugCheck insiders graph (logs/raw/rugcheck_insiders_graph.json) -----------------------
@@ -647,3 +669,41 @@ def ghs_score(data: dict) -> int | None:
 
 def ghs_flags(data: dict) -> list[str]:
     return _list(_get(data, "flags"))
+
+
+# /x-activity (grokhood_token_x_activity.json = organic, _noposts.json = tracked but no posts,
+# _untracked.json = never searched). level: organic | mixed | spam | none. GROKHOOD backend
+# src/shill/grade.ts: score >= 70 organic, >= 40 mixed, else spam; none = no graded posts.
+# Only organic and none were live on 2026-11-02 (300 latest launches: 16 organic, 26 none, rest untracked).
+def ghx_tracked(x: dict) -> bool | None:
+    v = _get(x, "tracked")
+    return v if isinstance(v, bool) else None
+
+
+def ghx_level(x: dict) -> str | None:
+    return _get(x, "level")
+
+
+def ghx_score(x: dict) -> int | None:
+    """0..100, higher = more organic; null when level is none."""
+    return _i(_get(x, "score"))
+
+
+def ghx_reasons(x: dict) -> list[str]:
+    return [r for r in _list(_get(x, "reasons")) if isinstance(r, str)]
+
+
+def ghx_posts(x: dict) -> int | None:
+    return _i(_get(x, "counts", "posts"))
+
+
+def ghx_authors(x: dict) -> int | None:
+    return _i(_get(x, "counts", "authors"))
+
+
+def ghx_rug_promoters(x: dict) -> int | None:
+    return _i(_get(x, "counts", "rugPromoters"))
+
+
+def ghx_graded_at(x: dict) -> str | None:
+    return _get(x, "gradedAt")
