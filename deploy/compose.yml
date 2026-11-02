@@ -1,0 +1,18 @@
+services:
+  desk:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8890"
+    volumes:
+      - ./.env:/app/.env
+      - desk-data:/app/data
+      - desk-logs:/app/logs
+    ports:
+      - "127.0.0.1:8890:8890"
+    mem_limit: 400m
+volumes:
+  desk-data:
+  desk-logs:
