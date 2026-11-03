@@ -127,6 +127,7 @@ footer a { color:var(--t2); }
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const usd = (v, sign) => v == null ? 'n/a' : (sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '')) + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const kusd = (v) => v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(1) + 'K' : '$' + Math.round(v);
   const num = (v) => v == null ? 'n/a' : Number(v).toLocaleString('en-US');
   const ago = (ts) => { const s = Math.max(0, Date.now() / 1000 - ts); return s < 60 ? 'now' : s < 3600 ? Math.floor(s / 60) + 'm' : Math.floor(s / 3600) + 'h'; };
   const hm = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
@@ -176,7 +177,7 @@ footer a { color:var(--t2); }
     $('upd').textContent = 'updated ' + new Date(s.updatedAt * 1000).toLocaleTimeString();
     $('agents').innerHTML = (s.agents || []).map((a) => `<div class="ag"><div class="nm"><i style="background:${a.status === 'running' ? COL[a.name] : '#555'}"></i>${esc(a.name)}</div><div class="st">${esc(a.subtitle)}<br><b>${esc(a.status)}</b></div></div>`).join('');
     const feed = s.feed || [];
-    $('feed').innerHTML = feed.length ? feed.map((c) => `<div class="row"><div class="av">${esc((c.symbol || c.name || '?')[0])}</div><div class="tx"><div class="t1">${esc(c.name || c.symbol)}</div><div class="t2">${esc(c.chain === 'robinhood' ? 'Robinhood Chain' : 'Solana')} · liq ${c.liq != null ? usd(c.liq).replace('.00', '') : 'n/a'}</div></div><div class="v ${c.verdict === 'pass' ? 'pass' : 'kill'}">${c.verdict === 'pass' ? 'pass' : 'kill'}<small>${esc(c.reason || '')}</small></div></div>`).join('') : '<div class="empty">Waiting for the next coin</div>';
+    $('feed').innerHTML = feed.length ? feed.map((c) => `<div class="row"><div class="av">${esc((c.symbol || c.name || '?')[0])}</div><div class="tx"><div class="t1">${esc(c.name || c.symbol)}</div><div class="t2">${esc(c.chain === 'robinhood' ? 'Robinhood Chain' : 'Solana')} · liq ${c.liq != null ? kusd(c.liq) : 'n/a'}</div></div><div class="v ${c.verdict === 'pass' ? 'pass' : 'kill'}">${c.verdict === 'pass' ? 'pass' : 'kill'}<small>${esc(c.reason || '')}</small></div></div>`).join('') : '<div class="empty">Waiting for the next coin</div>';
     const acts = s.activity || [];
     $('acts').innerHTML = acts.length ? acts.slice(0, 14).map((a) => {
       const u = safeUrl(a.coinUrl); const v = String(a.value || '');
