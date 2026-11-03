@@ -14,7 +14,12 @@
 <img src="https://img.shields.io/badge/tests-114_passing-00d35a?style=for-the-badge&labelColor=000">
 </p>
 
-The desk never places an order and never holds a key. FOMO has no public order API, so every signal ends with a **Buy on FOMO** / **Sell on FOMO** button that opens the coin in FOMO, where you trade yourself. 
+Two ways to trade:
+
+- **Buttons (default).** FOMO has no public order API, so every signal ends with a **Buy on FOMO** / **Sell on FOMO** button that opens the coin in FOMO, where you trade yourself. No keys.
+- **Auto trading (LIVE, Solana).** Give the desk its own new hot wallet (`WALLET_PRIVATE_KEY` in `.env`), switch to LIVE and send `auto on`. The Executor buys through Jupiter and Risk sells on the stop, the trail or the timeout, with nobody awake. Hard limits are checked before every buy: $25 per trade, 3 open trades, no new buys after a $50 losing night, 0.03 SOL kept for fees (all in settings, `trade.*`). PnL is booked from the real fill, fees included. `auto off` stops new buys, `sell all` closes everything, `wallet` shows the address and balance. Robinhood Chain stays on buttons.
+
+**Public live page.** `/live` shows the night to anyone, no token: the stack, the chart, the funnel, every decision with its reason and Replay. Read only. In auto mode it also shows the wallet address, so every trade can be checked on Solscan. Turn it off with `set public_page to off`. 
 
 **Analysis powered by [GROKHOOD](https://grokhood.tech).** GROMO is its own project: GROKHOOD is the main analysis engine it plugs into, the rug-ring scanner behind the Robinhood Chain audit (Safety Score, rings, known operators, insider dump alerts, X activity) and the Safety Score on every copy-bot card.
 

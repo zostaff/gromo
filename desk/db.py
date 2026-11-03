@@ -59,6 +59,12 @@ def _open(path: str) -> sqlite3.Connection:
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")
     c.executescript(SCHEMA)
+    # auto trading columns (added 2026-11-03): token amount held, decimals, tx signatures, sell attempts
+    for col in ("qty_raw TEXT", "decimals INTEGER", "buy_sig TEXT", "sell_sig TEXT", "sell_tries INTEGER DEFAULT 0"):
+        try:
+            c.execute(f"ALTER TABLE positions ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
     return c
 
 
@@ -183,6 +189,26 @@ def paper_balance() -> float:
             last = p.get("last_price") or p["entry_price"]
             bal += p["size_usd"] * (last / p["entry_price"] - 1)
     return round(bal, 2)
+
+
+def auto_stack() -> float:
+    """LIVE auto stack = free SOL in the desk wallet (kv wallet_usd, refreshed every minute) + open trades at
+    the last price."""
+    bal = float(kv_get("wallet_usd", 0) or 0)
+    for p in open_positions():
+        if p["mode"] == "LIVE" and p.get("qty_raw"):
+            last = p.get("last_price") or p["entry_price"]
+            bal += p["size_usd"] * last / p["entry_price"]
+    return round(bal, 2)
+
+
+def night_loss_live() -> float:
+    """Realized LIVE PnL since the night started (negative = loss)."""
+    n = current_night()
+    since = float(n["started_at"]) if n else now() - 12 * 3600
+    r = q1("SELECT COALESCE(SUM(pnl_usd),0) AS s FROM positions WHERE status='closed' AND mode='LIVE' "
+           "AND qty_raw IS NOT NULL AND closed_at>=?", (since,))
+    return float(r["s"]) if r else 0.0
 
 
 def kv_get(key: str, default: Any = None) -> Any:

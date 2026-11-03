@@ -29,6 +29,9 @@ set <setting> to <value> - e.g. set stop to 8
 stack N - set the stack in $
 status - balance, agents, open positions
 paper | live - switch mode (live needs typing LIVE)
+wallet - desk wallet address, balance, auto trading state
+auto on | auto off - real trades from the desk wallet (LIVE, Solana)
+sell all - sell every open auto trade now
 invite - your FOMO signup link
 report - tonight's report so far
 X = name, symbol or address."""
@@ -252,8 +255,56 @@ async def cmd_mode(chat: int, word: str) -> None:
         await reply(chat, "LIVE needs at least 1 full PAPER night first.")
         return
     db.kv_set("live_pending", db.now())
-    await reply(chat, "LIVE uses your real stack setting. The desk still never places orders. "
-                      "Type LIVE to confirm.")
+    from . import wallet
+    how = ("With auto on, the desk buys and sells from its own wallet (Solana), inside the trade limits."
+           if wallet.available() else "No desk wallet: LIVE sends buttons, you trade in FOMO.")
+    await reply(chat, f"LIVE means real money. {how} Type LIVE to confirm.")
+
+
+async def cmd_wallet(chat: int) -> None:
+    from . import swap, wallet
+    if not wallet.available():
+        await reply(chat, "No desk wallet. Put WALLET_PRIVATE_KEY in the server .env and restart.")
+        return
+    try:
+        sol = await swap.sol_balance() / swap.LAMPORTS
+        usd = sol * await swap.sol_usd()
+        bal = f"{sol:.4f} SOL (${usd:,.2f})"
+    except Exception as e:  # noqa: BLE001
+        bal = f"balance n/a ({type(e).__name__})"
+    g = config.get
+    await reply(chat, f"Desk wallet <code>{esc(wallet.pubkey())}</code>\n{bal}\n"
+                      f"Mode {esc(g('desk.mode'))} · auto {'ON' if g('trade.auto') else 'off'}\n"
+                      f"Limits: ${g('trade.max_ticket_usd'):g} per trade, {g('trade.max_open')} open, "
+                      f"stop buying after -${g('trade.daily_loss_usd'):g} a night, keep {g('trade.sol_reserve'):g} SOL",
+                [("Solscan", f"https://solscan.io/account/{wallet.pubkey()}")])
+
+
+async def cmd_auto(chat: int, on: bool) -> None:
+    from . import wallet
+    from .api import apply_setting
+    if on and not wallet.available():
+        await reply(chat, "No desk wallet. Put WALLET_PRIVATE_KEY in the server .env and restart.")
+        return
+    if on and config.get("desk.mode") != "LIVE":
+        await reply(chat, "Auto trading runs only in LIVE. Send live first.")
+        return
+    await apply_setting("trade.auto", on, "telegram")
+    await reply(chat, "Auto trading ON: the desk buys and sells from its wallet." if on else
+                "Auto trading off: no new real buys. Open trades are still guarded and sold by Risk.")
+
+
+async def cmd_sell_all(chat: int) -> None:
+    from .agents import risk
+    ps = [p for p in db.open_positions() if p["mode"] == "LIVE" and p.get("qty_raw")]
+    if not ps:
+        await reply(chat, "No open auto trades.")
+        return
+    done = 0
+    for p in ps:
+        if await risk.auto_sell(p, "manual"):
+            done += 1
+    await reply(chat, f"Sold {done} of {len(ps)}." + ("" if done == len(ps) else " The rest retry every poll."))
 
 
 async def handle_text(chat: int, text: str) -> None:
@@ -269,6 +320,12 @@ async def handle_text(chat: int, text: str) -> None:
         await reply(chat, esc(HELP))
     elif word == "buy" and arg:
         await cmd_buy(chat, arg)
+    elif word == "sell" and arg.lower() == "all":
+        await cmd_sell_all(chat)
+    elif word == "wallet":
+        await cmd_wallet(chat)
+    elif word == "auto" and arg.lower() in ("on", "off"):
+        await cmd_auto(chat, arg.lower() == "on")
     elif word == "sell" and arg:
         await cmd_sell(chat, arg)
     elif word == "why" and arg:

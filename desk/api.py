@@ -567,6 +567,63 @@ def api_404(rest: str) -> Response:
     return err("not found", 404)
 
 
+# ---- public live page (no token, read only) ------------------------------------------------
+_pub_cache: tuple[float, dict] | None = None
+
+
+def public_live() -> dict:
+    """What anyone may see: the night's numbers, the chart, the agents' decisions. No settings, no links
+    with tokens, no controls. The desk wallet address shows only when it trades for real (proof on chain)."""
+    from . import wallet
+    s = state()
+    night = db.current_night()
+    since = float(night["started_at"]) if night else db.now() - 86400
+    ch = json.loads(chart("ALL" if not night else "1D").body)
+    ch["points"] = [p for p in ch["points"] if p[0] >= since - 60] or ch["points"][-2:]
+    ch["marks"] = [m for m in ch["marks"] if m["ts"] >= since]
+    rows = []
+    for r in activity()["rows"]:
+        rows.append({k: r.get(k) for k in ("id", "ts", "kind", "title", "subtitle", "value", "value2", "mode",
+                                          "chain", "image", "coinUrl")})
+    cards = {a["name"]: a for a in s["agents"]}
+    auto = config.get("desk.mode") == "LIVE" and bool(config.get("trade.auto")) and wallet.available()
+    rp = replay.summary(24)
+    closed = db.q("SELECT pnl_usd FROM positions WHERE status='closed' AND closed_at>=?", (since,))
+    return {
+        "mode": s["mode"], "auto": auto, "wallet": wallet.pubkey() if auto else None,
+        "balance": s["balance"], "nightStart": s["nightStart"], "todayPct": s["todayPct"],
+        "multiplier": s["multiplier"], "since": since, "updatedAt": db.now(),
+        "funnel": {"heard": cards["scanner"]["count"], "takenApart": cards["auditor"]["card"].get("takenApart"),
+                   "auditorNo": cards["auditor"]["card"].get("rejected"), "scored": cards["analyst"]["card"].get("scored"),
+                   "trades": cards["executor"]["count"], "open": cards["risk"]["count"]},
+        "trades": {"closed": len(closed), "wins": sum(1 for c in closed if (c["pnl_usd"] or 0) >= 0),
+                   "pnl": round(sum(c["pnl_usd"] or 0 for c in closed), 2)},
+        "agents": [{"name": a["name"], "status": a["status"], "subtitle": a["subtitle"]} for a in s["agents"]],
+        "feed": (cards["scanner"]["card"].get("feed") or [])[:6],
+        "chart": ch, "activity": rows,
+        "replay": {"refused": rp["summary"]["refused"], "dodged": rp["summary"]["dodged"],
+                   "missed": rp["summary"]["missed"], "horizonH": rp["horizonH"]},
+    }
+
+
+@app.get("/public/live.json")
+def public_live_json() -> Response:
+    global _pub_cache
+    if not config.get("desk.public_page"):
+        return err("not found", 404)
+    if _pub_cache is None or db.now() - _pub_cache[0] > 8:
+        _pub_cache = (db.now(), public_live())
+    return JSONResponse(_pub_cache[1], headers={"Cache-Control": "public, max-age=5",
+                                                "Access-Control-Allow-Origin": "*"})
+
+
+@app.get("/live")
+def public_live_page() -> Response:
+    if not config.get("desk.public_page"):
+        return Response("not found", status_code=404)
+    return _static("live.html")
+
+
 # ---- reports + static --------------------------------------------------------------------
 @app.get("/reports/{name}")
 def report_file(name: str) -> Response:

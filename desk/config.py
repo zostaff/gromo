@@ -23,7 +23,7 @@ class Spec:
 S: dict[str, Spec] = {
     # scanner (Solana: pumpfun graduates)
     "scanner.solana": Spec(True, choices=(True, False), label="Solana pumpfun"),
-    "scanner.min_liquidity_usd": Spec(40000, 1000, 5_000_000, label="Min liquidity $"),
+    "scanner.min_liquidity_usd": Spec(15000, 1000, 5_000_000, label="Min liquidity $"),
     "scanner.max_top10_pct": Spec(25, 1, 100, label="Max top 10 %"),
     "scanner.max_h1_change_pct": Spec(80, 5, 10000, label="Max 1h change %"),
     "scanner.poll_s": Spec(60, 15, 600, label="Poll s"),
@@ -80,6 +80,13 @@ S: dict[str, Spec] = {
     "risk.timeout_h": Spec(3, 0.25, 168, label="Timeout h"),
     "risk.timeout_min_gain_pct": Spec(5, 0, 1000, label="Timeout min gain %"),
     "risk.confirm_window_min": Spec(2, 1, 60, label="Confirm window min"),
+    # auto trading (LIVE + desk wallet, Solana only). Hard limits, checked before every buy
+    "trade.auto": Spec(False, choices=(True, False), label="Auto trade with the desk wallet"),
+    "trade.max_ticket_usd": Spec(25, 1, 100000, label="Max per trade $"),
+    "trade.min_ticket_usd": Spec(5, 1, 100000, label="Min per trade $"),
+    "trade.max_open": Spec(3, 1, 20, label="Max open trades"),
+    "trade.daily_loss_usd": Spec(50, 1, 1_000_000, label="Stop buying after a night loss of $"),
+    "trade.sol_reserve": Spec(0.03, 0.005, 100, label="SOL kept for fees"),
     # replay
     "replay.horizon_h": Spec(6, 1, 48, label="Replay: hours after the decision"),
     # desk
@@ -91,6 +98,7 @@ S: dict[str, Spec] = {
     "desk.push_rejects": Spec(False, choices=(True, False), label="Push rejects"),
     "desk.fees_ref_discount": Spec(0.10, 0, 1, label="Ref fee discount"),
     "desk.fomo_handle": Spec("", label="FOMO handle"),
+    "desk.public_page": Spec(True, choices=(True, False), label="Public live page (/live)"),
     "desk.grokhood_api": Spec("https://api.grokhood.tech", label="GROKHOOD API"),
 }
 
@@ -182,6 +190,9 @@ def stack() -> float:
     """Current stack: PAPER = simulated balance (db), LIVE = desk.live_stack."""
     from . import db
     if get("desk.mode") == "LIVE":
+        if get("trade.auto"):
+            from . import db
+            return db.auto_stack()
         return float(get("desk.live_stack"))
     return db.paper_balance()
 

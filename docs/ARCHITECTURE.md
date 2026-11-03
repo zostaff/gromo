@@ -11,8 +11,20 @@ Two chains, one pipeline:
   GROKHOOD is our own rug-ring scanner: Safety Score 0-100, rings, known operators, insider dump alerts.
   FOMO trades Robinhood Chain (chainId 4663), so both chains end at the same FOMO button.
 
-FOMO has no public order API. The desk never places orders, never holds keys, never touches funds.
-It sends a button; the human taps Buy / Sell inside FOMO.
+FOMO has no public order API. By default the desk never places orders: it sends a button and the human
+taps Buy / Sell inside FOMO.
+
+Auto trading (opt-in, LIVE + `trade.auto` + `WALLET_PRIVATE_KEY`, Solana only): `desk/wallet.py` signs only the
+desk's own signer slot, `desk/swap.py` runs Jupiter Swap V2 (`/order` with `taker`, sign, `/execute`) and reads
+the token balance back from the chain. Executor `auto_buy` checks `trade.max_open`, the night loss limit
+(`trade.daily_loss_usd`, realized LIVE PnL since the night start) and sizes min(stack_pct of stack,
+max_pool_pct of liquidity, `trade.max_ticket_usd`, free SOL minus `trade.sol_reserve`). Positions keep
+`qty_raw`, `decimals`, `buy_sig`, `sell_sig`, `sell_tries`. Risk `auto_sell` sells everything at once; a failed
+sell stays `exiting` and retries every poll (push after 3). PnL = SOL out in USD minus USD in.
+
+Public page: `GET /live` (desk/web/live.html) polls `GET /public/live.json` (no token, 8 s cache), built by
+`api.public_live()`: state, tonight's chart and marks, funnel, scanner feed, 30 activity rows, Replay summary,
+the wallet address only in auto mode. Off with `desk.public_page`.
 
 ## Rules for every module
 - Python 3.12+ syntax, type hints, `httpx.AsyncClient`, no blocking calls in the loop.

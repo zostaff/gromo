@@ -3,7 +3,9 @@
 Rules in order: peak update; stop (price <= that position's stop price); trail activates at
 +trail_start_pct (never turns off); trail exit at peak * (1 - trail_pct); timeout after timeout_h if the
 price is under entry * (1 + timeout_min_gain_pct); liquidity 0 -> pulled. Exit price = polled price.
-PAPER closes at once. LIVE goes "exiting" until the human taps Sold (actions.sold).
+PAPER closes at once. LIVE auto positions (bought by the desk wallet) are sold through Jupiter at once; a failed
+sell stays "exiting" and is retried every poll (a push after 3 failures). Other LIVE positions go "exiting"
+until the human taps Sold (actions.sold).
 """
 from __future__ import annotations
 
@@ -98,7 +100,8 @@ def _money(v: float) -> str:
     return f"{'+' if v >= 0 else '-'}${abs(v):,.2f}"
 
 
-def close_position(pid: int, exit_price: float | None = None, reason: str | None = None) -> dict | None:
+def close_position(pid: int, exit_price: float | None = None, reason: str | None = None,
+                   pnl_usd: float | None = None) -> dict | None:
     """Close at exit_price (default: the stored trigger price, else last price). Activity + exit event."""
     p = db.q1("SELECT * FROM positions WHERE id=?", (pid,))
     if not p or p["status"] == "closed":
@@ -106,6 +109,8 @@ def close_position(pid: int, exit_price: float | None = None, reason: str | None
     reason = reason or p.get("exit_reason") or "manual"
     price = exit_price if exit_price is not None else (p.get("exit_price") or p.get("last_price") or p["entry_price"])
     pnl, fee, move = pnl_of(p, float(price))
+    if pnl_usd is not None:   # real fill: what came back minus what went in, fees included
+        pnl, fee = round(float(pnl_usd), 2), 0.0
     db.update("positions", pid, {"status": "closed", "closed_at": db.now(), "exit_price": float(price),
                                  "exit_reason": reason, "pnl_usd": pnl, "fees_usd": fee})
     name = _name(p["mint"])
@@ -135,7 +140,39 @@ def _sell_buttons(p: dict) -> list[tuple[str, str]]:
     return [("Sell on FOMO", links.coin_url(p["mint"], _chain(p["mint"]))), ("Sold", f"cb:sold:{p['id']}")]
 
 
+SELL_PUSH_AFTER = 3
+
+
+async def auto_sell(p: dict, reason: str) -> dict | None:
+    """Sell an auto position from the desk wallet. -> close result, or None if the sell failed (stays exiting)."""
+    from desk import swap
+    db.update("positions", p["id"], {"status": "exiting", "exit_reason": reason})
+    try:
+        res = await swap.sell(p["mint"], int(p["qty_raw"]))
+    except Exception as e:  # noqa: BLE001
+        tries = int(p.get("sell_tries") or 0) + 1
+        db.update("positions", p["id"], {"sell_tries": tries})
+        why = str(e)[:80] if isinstance(e, swap.SwapError) else type(e).__name__
+        log.warning("auto sell failed %s (try %d): %s", _name(p["mint"]), tries, why)
+        if why == "no tokens in the wallet":
+            # sold outside the desk: close at the last price so the slot frees up
+            return close_position(p["id"], None, "manual")
+        if tries == SELL_PUSH_AFTER:
+            await market.push(f"SELL FAILED {_name(p['mint'])} 3 times: {why}. Still retrying. "
+                              "Sell it by hand if you can.", _sell_buttons(p), p["mint"], "warn")
+        return None
+    db.update("positions", p["id"], {"sell_sig": res["signature"]})
+    r = close_position(p["id"], res["price_usd"], reason, pnl_usd=res["usd_out"] - float(p["size_usd"]))
+    if r:
+        await market.push(f"Sold {_name(p['mint'])} · {LABEL.get(reason, 'sold')}\n{_money(r['pnl'])} · {r['move']:+.1f}%",
+                          [("Transaction", f"https://solscan.io/tx/{res['signature']}")], p["mint"], "exit")
+    return r
+
+
 async def trigger_exit(p: dict, reason: str, price: float) -> None:
+    if p["mode"] == "LIVE" and p.get("qty_raw"):
+        await auto_sell(p, reason)
+        return
     text = _exit_text(p, reason, price)
     if p["mode"] == "PAPER":
         close_position(p["id"], price, reason)
@@ -182,6 +219,8 @@ async def poll_once(now: float | None = None) -> None:
             if p["status"] == "exiting":
                 if price is not None:
                     db.update("positions", p["id"], {"last_price": price})
+                if p["mode"] == "LIVE" and p.get("qty_raw"):
+                    await auto_sell(p, p.get("exit_reason") or "manual")
                 continue
             upd, reason = step(p, price, liq, now)
             db.update("positions", p["id"], upd)
@@ -215,6 +254,13 @@ async def run() -> None:
 async def balance_loop() -> None:
     """One balance point a minute into db.balance, emitted as "balance"."""
     while True:
+        if config.get("desk.mode") == "LIVE" and config.get("trade.auto"):
+            try:
+                from desk import swap, wallet
+                if wallet.available():
+                    db.kv_set("wallet_usd", round(await swap.wallet_usd(), 2))
+            except Exception:  # noqa: BLE001
+                log.warning("wallet balance read failed")
         try:
             v = float(config.stack())
             t = db.now()

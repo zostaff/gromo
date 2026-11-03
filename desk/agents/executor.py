@@ -1,7 +1,8 @@
-"""Executor: sizes the ticket, re-checks the coin, sends ONE button push. Never places an order.
+"""Executor: sizes the ticket, re-checks the coin, then fills it.
 
-PAPER fills at the signal price at once. LIVE waits for the human's "Bought" (actions.bought)
-inside executor.confirm_window_min, else the signal is "missed".
+PAPER fills at the signal price at once. LIVE with trade.auto on and a desk wallet (Solana) buys for real
+through Jupiter, inside the hard limits (trade.*). Other LIVE coins (Robinhood Chain, or auto off) get ONE
+button push and wait for the human's "Bought" (actions.bought) inside executor.confirm_window_min.
 """
 from __future__ import annotations
 
@@ -94,6 +95,88 @@ def _fmt_money(v: float) -> str:
     return f"${v:,.2f}"
 
 
+def auto_on(chain: str) -> bool:
+    from desk import wallet
+    return (config.get("desk.mode") == "LIVE" and bool(config.get("trade.auto")) and chain == "solana"
+            and wallet.available())
+
+
+def auto_guard() -> str | None:
+    """Hard limits before any real buy. -> skip reason or None."""
+    g = config.get
+    live = [p for p in db.open_positions() if p["mode"] == "LIVE" and p.get("qty_raw")]
+    if len(live) >= int(g("trade.max_open")):
+        return "max open trades"
+    if db.night_loss_live() <= -float(g("trade.daily_loss_usd")):
+        return "night loss limit hit"
+    return None
+
+
+def auto_size(stack: float, free_usd: float, liquidity: float | None) -> tuple[float | None, str | None]:
+    """stack_pct% of the stack, capped by max_pool_pct% of liquidity, trade.max_ticket_usd and the free SOL."""
+    g = config.get
+    size = stack * float(g("executor.stack_pct")) / 100
+    if liquidity is not None:
+        size = min(size, liquidity * float(g("executor.max_pool_pct")) / 100)
+    size = min(size, float(g("trade.max_ticket_usd")), free_usd)
+    mt = float(g("trade.min_ticket_usd"))
+    if size < mt:
+        return None, ("wallet empty" if free_usd < mt else f"under ${mt:.2f}")
+    return round(size, 2), None
+
+
+async def auto_buy(mint: str, name: str, chain: str, fresh: dict, scan: dict, audit: dict, verdict: dict) -> dict:
+    """A real buy from the desk wallet. Every failure is a skip with the reason, never a retry loop."""
+    from desk import swap
+    why = auto_guard()
+    if why:
+        if why == "night loss limit hit" and db.kv_get("halt_pushed") != (db.current_night() or {}).get("id"):
+            db.kv_set("halt_pushed", (db.current_night() or {}).get("id"))
+            await market.push(f"Night loss limit hit (${float(config.get('trade.daily_loss_usd')):g}). "
+                              "No more buys until the next report. Open trades are still guarded.", [], None, "warn")
+        return _skip(mint, name, why, "LIVE", fresh.get("priceUsd"))
+    try:
+        free = await swap.wallet_usd() - float(config.get("trade.sol_reserve")) * await swap.sol_usd()
+    except Exception as e:  # noqa: BLE001
+        return _skip(mint, name, f"wallet read failed: {type(e).__name__}", "LIVE", fresh.get("priceUsd"))
+    db.kv_set("wallet_usd", round(free + float(config.get("trade.sol_reserve")) * await swap.sol_usd(), 2))
+    liq = fresh.get("liquidityUsd") if fresh.get("liquidityUsd") is not None else scan.get("liquidityUsd")
+    size, why = auto_size(float(config.stack()), max(0.0, free), liq)
+    if size is None:
+        return _skip(mint, name, why, "LIVE", fresh.get("priceUsd"))
+    stack = float(config.stack())
+    pct = round(100 * size / stack, 1) if stack > 0 else 0.0
+    url = links.coin_url(mint, chain)
+    sid = db.insert("signals", {"mint": mint, "ts": db.now(), "price": float(fresh["priceUsd"]), "size_usd": size,
+                                "stack_pct": pct, "link": url, "mode": "LIVE", "status": "sent", "reason": None})
+    bus.emit("signal", {"signal_id": sid, "mint": mint, "name": name, "chain": chain, "sizeUsd": size,
+                        "stackPct": pct, "price": float(fresh["priceUsd"]), "mode": "LIVE", "coinUrl": url})
+    card(state="executing", progress=30, name=name, lastSize=size)
+    try:
+        res = await swap.buy(mint, size)
+    except Exception as e:  # noqa: BLE001 - any failure: no position, say why
+        reason = str(e)[:80] if isinstance(e, swap.SwapError) else type(e).__name__
+        db.update("signals", sid, {"status": "failed", "reason": reason})
+        db.add_activity("skipped", mint, "executor", f"Skipped {name}", f"Executor · buy failed: {reason}",
+                        "Skipped", "", "LIVE")
+        card(state="idle", progress=0)
+        await market.push(f"Buy failed {name}: {reason}", [("Open on FOMO", url)], mint, "warn")
+        log.warning("auto buy failed %s: %s", name, reason)
+        return {"signal_id": sid, "status": "failed", "reason": reason}
+    sig = db.q1("SELECT * FROM signals WHERE id=?", (sid,))
+    sig.update({"price": res["price_usd"], "size_usd": res["usd_in"]})
+    pid = open_position(sig)
+    db.update("positions", pid, {"qty_raw": str(res["tokens_raw"]), "decimals": res["decimals"],
+                                 "buy_sig": res["signature"]})
+    card(state="filled", progress=100, name=name, lastSize=res["usd_in"])
+    layers = audit.get("layers") or []
+    shield = f"{sum(1 for l in layers if l.get('pass') is True)}/{len(layers) or '?'}"
+    await market.push(f"Bought {name} · {_fmt_money(res['usd_in'])} · {pct:g}% of stack\n"
+                      f"Auditor {shield} · Analyst {verdict.get('score')} · stop -{float(config.get('risk.stop_pct')):g}%",
+                      [("Transaction", f"https://solscan.io/tx/{res['signature']}"), ("Open on FOMO", url)], mint, "signal")
+    return {"signal_id": sid, "status": "bought", "position_id": pid, "size": res["usd_in"]}
+
+
 def open_position(signal: dict) -> int:
     """Open a position from a signal at the signal price. Used by PAPER fill and actions.bought."""
     stop = float(config.get("risk.stop_pct"))
@@ -150,6 +233,8 @@ async def handle(msg: dict, paper_bar: bool = True) -> dict:
     why = recheck(scan, msg.get("market") or {}, fresh)
     if why:
         return _skip(mint, name, why, mode, fresh.get("priceUsd"))
+    if auto_on(chain):
+        return await auto_buy(mint, name, chain, fresh, scan, audit, verdict)
 
     stack = float(config.stack())
     free = stack - money_in_open()

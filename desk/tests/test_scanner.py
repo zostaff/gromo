@@ -51,8 +51,8 @@ def test_kill_order():
 
 def test_wait_then_never_qualified():
     v, r = scanner.evaluate(base(liq=10000.0, waited_min=5))
-    assert v == "wait" and r == "liquidity $10,000 < $40,000"
-    assert scanner.evaluate(base(liq=10000.0, waited_min=60)) == ("kill", "never qualified: liquidity $10,000 < $40,000")
+    assert v == "wait" and r == "liquidity $10,000 < $15,000"
+    assert scanner.evaluate(base(liq=10000.0, waited_min=60)) == ("kill", "never qualified: liquidity $10,000 < $15,000")
     assert scanner.evaluate(base(age_min=3.0, waited_min=3)) == ("wait", "pool 3 min < 10 min")
     assert scanner.evaluate(base(top10=None))[1] == "top 10 n/a"
 

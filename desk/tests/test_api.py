@@ -122,3 +122,30 @@ def test_no_secrets_in_web_docs_readme():
 def test_no_dashes_in_user_strings():
     for name in ("api.py", "notify.py", "telegram.py", "report.py", "main.py"):
         assert not re.search("[–—]", (ROOT / "desk" / name).read_text()), name
+
+
+def test_public_live_no_token_no_secrets(client, monkeypatch):
+    from solders.keypair import Keypair
+    from desk import api, wallet
+    kp = Keypair()
+    monkeypatch.setenv("WALLET_PRIVATE_KEY", str(kp))
+    monkeypatch.setattr(wallet, "_kp", None)
+    api._pub_cache = None
+    db.start_night(200, "PAPER")
+    assert client.get("/live").status_code == 200
+    r = client.get("/public/live.json")
+    assert r.status_code == 200
+    body = r.text
+    d = r.json()
+    assert d["mode"] == "PAPER" and d["wallet"] is None and d["auto"] is False
+    assert {"balance", "funnel", "chart", "activity", "agents", "replay", "feed"} <= set(d)
+    assert TOKEN not in body and str(kp) not in body
+    # LIVE + auto: the wallet address (never the key) is public as proof
+    config._cache["desk.mode"] = "LIVE"
+    config._cache["trade.auto"] = True
+    api._pub_cache = None
+    d = client.get("/public/live.json").json()
+    assert d["wallet"] == str(kp.pubkey()) and d["auto"] is True and str(kp) not in str(d)
+    config._cache["desk.public_page"] = False
+    api._pub_cache = None
+    assert client.get("/public/live.json").status_code == 404 and client.get("/live").status_code == 404
