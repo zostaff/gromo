@@ -127,7 +127,7 @@ def setup_logging() -> None:
     files.addFilter(Redact())
     root.addHandler(files)
     err = logging.StreamHandler(sys.stderr)
-    err.setLevel(logging.WARNING)
+    err.setLevel(logging.INFO)
     err.addFilter(Redact())
     err.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     root.addHandler(err)
